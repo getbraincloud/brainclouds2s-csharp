@@ -2,6 +2,7 @@
 // brainCloud client source code
 // Copyright 2020 bitHeads, inc.
 //----------------------------------------------------
+
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -16,6 +17,7 @@ using System.IO;
 using System.Collections;
 using System.Threading;
 using System.Runtime.Serialization;
+
 public interface IS2SCallback
 {
     /**
@@ -30,6 +32,7 @@ public interface IS2SCallback
     void onAuthenticationCallback(string jsonResponseData);
     void onHeartbeatCallback(string jsonResponseData);
 }
+
 internal sealed class BrainClouds2s : IS2SCallback
 {
     private static int NO_PACKET_EXPECTED = -1;
@@ -73,6 +76,7 @@ internal sealed class BrainClouds2s : IS2SCallback
     private static Mutex _lock = new Mutex();
     private ArrayList<KeyValuePair<HttpWebRequest, string>> _requestQueue = new ArrayList<KeyValuePair<HttpWebRequest, string>>();
     IS2SCallback s2scallback = new IS2SCallback();
+
     /**
         * Initialize brainclouds2s context
         *
@@ -84,6 +88,7 @@ internal sealed class BrainClouds2s : IS2SCallback
     {
         Init(appId, serverName, serverSecret, DEFAULT_S2S_URL);
     }
+
     /**
     * Initialize brainclouds2s context
     *
@@ -103,6 +108,7 @@ internal sealed class BrainClouds2s : IS2SCallback
         ServerName = serverName;
         SessionId = null;
     }
+
     /**
     * Send an S2S request.
     *
@@ -115,58 +121,24 @@ internal sealed class BrainClouds2s : IS2SCallback
         {
             authenticate(callback);
         }
-        //make request and add to the request queue
-        HttpWebRequest req = (HttpWebRequest)WebRequest.Create(ServerURL);
-        _requestQueue.Add(req, jsonRequestData);
-        sendRequest(req, jsonRequestData);
+        formRequest(jsonRequestData);
     }
-    private void resetHeartbeat()
+
+    //need to get dictionary properly serializing to string
+    //var dataAsString = string.Join("", data.Select(x => string.Format("{0}", x.Key, "", x.Value)));
+    private void formRequest(string jsonRequestData)
     {
-        _lastHeartbeat = DateTime.Now();
+        //create new request
+        HttpWebRequest request = (HttpWebRequest)WebRequest.Create(ServerURL);
+        //create data packet
+        string dataPacket = createPacket(jsonRequestData);
+        //customize request
+        request.Method = "POST";
+        request.ContentType = "application/json; charset=utf-8";
+        _requestQueue.Add(request, dataPacket);         //store request and associated dataPacket
+        _packetId++;
     }
-    private Dictionary<string, object> generateError(int statusCode, int reasonCode, string statusMessage)
-    {
-        Dictionary<string, object> jsonError = new Dictionary<string, object>();
-        jsonError.Add("status", statusCode);
-        jsonError.Add("reason_code", reasonCode);
-        jsonError.Add("serverity", "ERROR");
-        jsonError.Add("status_message", statusMessage);
-        return jsonError;
-    }
-    public void authenticate(IS2SCallback callback)
-    {
-        string jsonAuthString = "{\"service\":\"authenticationV2\",\"operation\":\"AUTHENTICATE\",\"data\":{\"appId\":\"" + AppId + "\",\"serverName\":\"" + ServerName + "\",\"serverSecret\":\"" + ServerSecret + "\"}}";
-        _packetId = 0;
-        //Dictionary<string, object> authenticationData = new Dictionary<string, object>();
-        //authenticationData.Add("appid", AppId);
-        //authenticationData.Add("serverName", ServerName);
-        //authenticationData.Add("serverSecret", ServerSecret);
-        //Dictionary<string, object> authenticationMessage = new Dictionary<string, object>();
-        //authenticationMessage.Add("service", "authenticationV2");
-        //authenticationMessage.Add("operation", "AUTHENTICATE");
-        //authenticationMessage.Add("data", authenticationData);
-        //HttpWebRequest req = new HttpWebRequest();
-        HttpWebRequest req = (HttpWebRequest)WebRequest.Create(ServerURL);
-        _requestQueue.Add(req, jsonAuthString);
-        sendRequest(req, jsonAuthString);
-    }
-    public void sendHeartbeat(IS2SCallback callback)
-    {
-        if (SessionId != null)
-        {
-            string jsonHeartbeatString = "{\"service\":\"heartbeat\",\"operation\":\"HEARTBEAT\"}";
-            HttpWebRequest req = (HttpWebRequest)WebRequest.Create(ServerURL);
-            _requestQueue.Add(req, jsonHeartbeatString);
-            sendRequest(req, jsonHeartbeatString);
-        }
-        //if (SessionID != null)
-        //{
-        //    Dictionary<string, object> heartbeatMessage = new Dictionary<string, object>();
-        //    heartbeatMessage.Add("service", "heartbeat");
-        //    heartbeatMessage.Add("operation", "HEARTBEAT");
-        //    sendRequest(heartbeatMessage);
-        //}
-    }
+
     private string createPacket(string packetData)
     {
         //form the packet
@@ -177,34 +149,56 @@ internal sealed class BrainClouds2s : IS2SCallback
         }
         packetDataString += ",\"messages\":[" + packetData + "]}";
         return packetDataString;
-        //ArrayList<string> messages = new ArrayList<Dictionary<string, object>>();
-        //messages.Add(packetInfo);
-        //Dictionary<string, object> allMessages = new Dictionary<string, object>();
-        //allMessages.Add("packetId", PacketId);
-        //allMessages.Add("sessionId", SessionID);
-        //allMessages.Add("messages", messages);
-        //return allMessages;
     }
-    private void sendRequest(HttpWebRequest request, string jsonRequestData)
+
+    private void sendData(HttpWebRequest request, string dataPacket)
     {
-        string data = createPacket(jsonRequestData);
-        //need to get dictionary properly serializing to string
-        //var dataAsString = string.Join("", data.Select(x => string.Format("{0}", x.Key, "", x.Value)));
-        //public static string ToStringFlattened(this Dictionary<string, string> source, string keyValueSeparator = "=", string sequenceSeparator = "|")
-        //{
-        //    return source == null ? "" : string.Join(sequenceSeparator, source.Keys.Zip(source.Values, (k, v) => k + keyValueSeparator + v));
-        //}
-        //make request
-        //request = (HttpWebRequest)WebRequest.Create(ServerURL);
-        request.Method = "POST";
-        request.ContentType = "application/json; charset=utf-8";
-        //request data
-        byte[] byteArray = Encoding.UTF8.GetBytes(data);
-        Stream requestStream = request.GetRequestStream();
-        requestStream.Write(byteArray, 0, byteArray.Length);
+        byte[] byteArray = Encoding.UTF8.GetBytes(dataPacket);      //convert data packet to byte[]
+        Stream requestStream = request.GetRequestStream();          //gets a stream to send dataPacket for request
+        requestStream.Write(byteArray, 0, byteArray.Length);        //writes dataPacket to stream and sends data with request. 
         request.ContentLength = byteArray.Length;
-        _packetId++;
     }
+
+    private void resetHeartbeat()
+    {
+        _lastHeartbeat = DateTime.Now();
+    }
+
+    private Dictionary<string, object> generateError(int statusCode, int reasonCode, string statusMessage)
+    {
+        Dictionary<string, object> jsonError = new Dictionary<string, object>();
+        jsonError.Add("status", statusCode);
+        jsonError.Add("reason_code", reasonCode);
+        jsonError.Add("serverity", "ERROR");
+        jsonError.Add("status_message", statusMessage);
+        return jsonError;
+    }
+
+    public void authenticate(IS2SCallback callback)
+    {
+        string jsonAuthString = "{\"service\":\"authenticationV2\",\"operation\":\"AUTHENTICATE\",\"data\":{\"appId\":\"" + AppId + "\",\"serverName\":\"" + ServerName + "\",\"serverSecret\":\"" + ServerSecret + "\"}}";
+        _packetId = 0;
+        HttpWebRequest req = new HttpWebRequest();
+        formRequest(req, jsonAuthString);
+    }
+
+    public void sendHeartbeat(IS2SCallback callback)
+    {
+        if (SessionId != null)
+        {
+            string jsonHeartbeatString = "{\"service\":\"heartbeat\",\"operation\":\"HEARTBEAT\"}";
+            HttpWebRequest req = new HttpWebRequest();
+            formRequest(req, jsonHeartbeatString);
+        }
+        //if (SessionID != null)
+        //{
+        //    Dictionary<string, object> heartbeatMessage = new Dictionary<string, object>();
+        //    heartbeatMessage.Add("service", "heartbeat");
+        //    heartbeatMessage.Add("operation", "HEARTBEAT");
+        //    sendRequest(heartbeatMessage);
+        //}
+    }
+
     private string readResponseBody(HttpWebResponse response)
     {
         // Get the stream associated with the response.
@@ -213,6 +207,7 @@ internal sealed class BrainClouds2s : IS2SCallback
         StreamReader readStream = new StreamReader(receiveStream, Encoding.UTF8);
         return readStream.ReadToEnd();
     }
+
     private void LogString(string s)
     {
         if (_loggingEnabled)
@@ -225,8 +220,12 @@ internal sealed class BrainClouds2s : IS2SCallback
     {
         if (_requestQueue.Count != 0)
         {
+            //make first request in queue the active request
             HttpWebRequest activeRequest = _requestQueue[0];
-            //Get server response
+            //send the request data
+            KeyValuePair<HttpWebRequest, string> requestpair = activeRequest;
+            sendData(activeRequest, requestpair.Value);
+            //Send request and wait for server response
             HttpWebResponse response = activeRequest.GetResponse();
             //Get server response async
             //HttpWebResponse response = (HttpWebResponse)await Task.Factory.FromAsync<WebResponse>(activeRequest.BeginGetResponse, activeRequest.EndGetResponse, null); 
@@ -290,6 +289,7 @@ internal sealed class BrainClouds2s : IS2SCallback
             }
         }
     }
+
     /**
     * Terminate current session from server.
     * (New Session will automatically be created on next request)
@@ -299,6 +299,7 @@ internal sealed class BrainClouds2s : IS2SCallback
         Authenticated = false;
         SessionId = null;
     }
+
     public void onAuthenticationCallback(string jsonData)
     {
         //probably going to have to have string parameter for this callback and deserialize the string into a dictionary. 
@@ -321,6 +322,7 @@ internal sealed class BrainClouds2s : IS2SCallback
             }
         }
     }
+
     public void onHeartbeatCallback(string jsonData)
     {
         //probably going to have to have string parameter for this callback and deserialize the string into a dictionary. 
@@ -337,9 +339,5 @@ internal sealed class BrainClouds2s : IS2SCallback
         }
         disconnect();
     }
+
 }
-
-
-
-
-
