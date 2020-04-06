@@ -10,25 +10,16 @@ using System.Net;
 using System.Net.Http;
 using System.Threading.Tasks;
 using System.Threading;
-using UnityEngine.Experimental.Networking;
-using UnityEngine.Networking;
-using UnityEngine;
+//using UnityEngine.Experimental.Networking;
+//using UnityEngine.Networking;
+//using UnityEngine;
 using System.IO;
 using System.Collections;
-using System.Threading;
 using System.Runtime.Serialization;
+using BrainCloud.JsonFx.Json;
 
 public interface IS2SCallback
 {
-    /**
-     * The serverCallback() method returns server data back to the layer
-     * interfacing with the BrainCloud library.
-     *
-     * @param serviceName - name of the requested service
-     * @param serviceOperation - requested operation
-     * @param jsonData - returned data from the server
-     */
-    void s2sCallback(BrainClouds2s context, Dictionary<string, object> jsonData);
     void onAuthenticationCallback(string jsonResponseData);
     void onHeartbeatCallback(string jsonResponseData);
 }
@@ -36,6 +27,7 @@ public interface IS2SCallback
 internal sealed class BrainClouds2s : IS2SCallback
 {
     private static int NO_PACKET_EXPECTED = -1;
+    private static int SERVER_SESSION_EXPIRED = 40365;
     private static string DEFAULT_S2S_URL = "https://sharedprod.braincloudservers.com/s2sdispatcher";
     public string ServerURL
     {
@@ -71,11 +63,10 @@ internal sealed class BrainClouds2s : IS2SCallback
     }
     private long _packetId = 0;
     private long _heartbeatSeconds = 1800; //Default to 30 mins  
-    private TimeSpan _heartbeatTimer = TimeSpan.FromSeconds(_heartbeatSeconds);
+    private TimeSpan _heartbeatTimer;
     private DateTime _lastHeartbeat;
     private static Mutex _lock = new Mutex();
-    private ArrayList<KeyValuePair<HttpWebRequest, string>> _requestQueue = new ArrayList<KeyValuePair<HttpWebRequest, string>>();
-    IS2SCallback s2scallback = new IS2SCallback();
+    private ArrayList _requestQueue = new ArrayList();
 
     /**
         * Initialize brainclouds2s context
@@ -107,6 +98,7 @@ internal sealed class BrainClouds2s : IS2SCallback
         ServerSecret = serverSecret;
         ServerName = serverName;
         SessionId = null;
+        _heartbeatTimer = TimeSpan.FromSeconds(_heartbeatSeconds);
     }
 
     /**
@@ -115,27 +107,32 @@ internal sealed class BrainClouds2s : IS2SCallback
     * @param json S2S operation to be sent as a string
     * @param callback Callback function
     */
-    public void request(string jsonRequestData, IS2SCallback callback)
+    public void request(string jsonRequestData)
     {
-        if (!isAuthenticated)
+        if (!Authenticated)
         {
-            authenticate(callback);
+            Console.WriteLine("\nNot Authenticated");
+            authenticate();
         }
         formRequest(jsonRequestData);
     }
 
-    //need to get dictionary properly serializing to string
-    //var dataAsString = string.Join("", data.Select(x => string.Format("{0}", x.Key, "", x.Value)));
     private void formRequest(string jsonRequestData)
     {
+        Console.WriteLine("forming new request with: " + jsonRequestData);
         //create new request
         HttpWebRequest request = (HttpWebRequest)WebRequest.Create(ServerURL);
         //create data packet
         string dataPacket = createPacket(jsonRequestData);
+        Console.WriteLine("Created Packet: " + dataPacket);
+
         //customize request
         request.Method = "POST";
         request.ContentType = "application/json; charset=utf-8";
-        _requestQueue.Add(request, dataPacket);         //store request and associated dataPacket
+
+        _requestQueue.Add(new KeyValuePair<HttpWebRequest, string>(request, dataPacket));         //store request and associated dataPacket
+        Console.WriteLine("Request Queue size: " + _requestQueue.Count);
+
         _packetId++;
     }
 
@@ -143,9 +140,12 @@ internal sealed class BrainClouds2s : IS2SCallback
     {
         //form the packet
         string packetDataString = "{\"packetId\":" + (int)_packetId;
-        if (SessionId.Length != 0)
+        if (SessionId != null)
         {
-            packetDataString += ",\"sessionId\":\"" + SessionId + "\"";
+            if (SessionId.Length != 0)
+            {
+                packetDataString += ",\"sessionId\":\"" + SessionId + "\"";
+            }
         }
         packetDataString += ",\"messages\":[" + packetData + "]}";
         return packetDataString;
@@ -153,50 +153,47 @@ internal sealed class BrainClouds2s : IS2SCallback
 
     private void sendData(HttpWebRequest request, string dataPacket)
     {
+        Console.WriteLine("Attempting to send data...");
         byte[] byteArray = Encoding.UTF8.GetBytes(dataPacket);      //convert data packet to byte[]
         Stream requestStream = request.GetRequestStream();          //gets a stream to send dataPacket for request
         requestStream.Write(byteArray, 0, byteArray.Length);        //writes dataPacket to stream and sends data with request. 
         request.ContentLength = byteArray.Length;
+
+        StreamReader readStream = new StreamReader(requestStream, Encoding.UTF8);
+        Console.WriteLine("stream: " + readStream.ReadToEnd());
     }
 
     private void resetHeartbeat()
     {
-        _lastHeartbeat = DateTime.Now();
+        _lastHeartbeat = DateTime.Now;
     }
 
-    private Dictionary<string, object> generateError(int statusCode, int reasonCode, string statusMessage)
-    {
-        Dictionary<string, object> jsonError = new Dictionary<string, object>();
-        jsonError.Add("status", statusCode);
-        jsonError.Add("reason_code", reasonCode);
-        jsonError.Add("serverity", "ERROR");
-        jsonError.Add("status_message", statusMessage);
-        return jsonError;
-    }
+    //private Dictionary<string, object> generateError(int statusCode, int reasonCode, string statusMessage)
+    //{
+    //    Dictionary<string, object> jsonError = new Dictionary<string, object>();
+    //    jsonError.Add("status", statusCode);
+    //    jsonError.Add("reason_code", reasonCode);
+    //    jsonError.Add("serverity", "ERROR");
+    //    jsonError.Add("status_message", statusMessage);
+    //    return jsonError;
+    //}
 
-    public void authenticate(IS2SCallback callback)
+    public void authenticate()
     {
+        Console.WriteLine("Creating Authentication request...");
         string jsonAuthString = "{\"service\":\"authenticationV2\",\"operation\":\"AUTHENTICATE\",\"data\":{\"appId\":\"" + AppId + "\",\"serverName\":\"" + ServerName + "\",\"serverSecret\":\"" + ServerSecret + "\"}}";
         _packetId = 0;
-        HttpWebRequest req = new HttpWebRequest();
-        formRequest(req, jsonAuthString);
+        formRequest(jsonAuthString);
     }
 
-    public void sendHeartbeat(IS2SCallback callback)
+    public void sendHeartbeat()
     {
+        Console.WriteLine("Sending Heartbeat");
         if (SessionId != null)
         {
             string jsonHeartbeatString = "{\"service\":\"heartbeat\",\"operation\":\"HEARTBEAT\"}";
-            HttpWebRequest req = new HttpWebRequest();
-            formRequest(req, jsonHeartbeatString);
+            formRequest(jsonHeartbeatString);
         }
-        //if (SessionID != null)
-        //{
-        //    Dictionary<string, object> heartbeatMessage = new Dictionary<string, object>();
-        //    heartbeatMessage.Add("service", "heartbeat");
-        //    heartbeatMessage.Add("operation", "HEARTBEAT");
-        //    sendRequest(heartbeatMessage);
-        //}
     }
 
     private string readResponseBody(HttpWebResponse response)
@@ -210,7 +207,7 @@ internal sealed class BrainClouds2s : IS2SCallback
 
     private void LogString(string s)
     {
-        if (_loggingEnabled)
+        if (LoggingEnabled)
         {
             Console.WriteLine("#BCC " + s);
         }
@@ -221,70 +218,84 @@ internal sealed class BrainClouds2s : IS2SCallback
         if (_requestQueue.Count != 0)
         {
             //make first request in queue the active request
-            HttpWebRequest activeRequest = _requestQueue[0];
+            KeyValuePair<HttpWebRequest, string> requestPair = (KeyValuePair<HttpWebRequest, string>)_requestQueue[0];
+            HttpWebRequest activeRequest = requestPair.Key;
+
             //send the request data
-            KeyValuePair<HttpWebRequest, string> requestpair = activeRequest;
-            sendData(activeRequest, requestpair.Value);
+            sendData(activeRequest, requestPair.Value);
+
             //Send request and wait for server response
-            HttpWebResponse response = activeRequest.GetResponse();
+            HttpWebResponse response = (HttpWebResponse)activeRequest.GetResponse();
+
+            //if (response.StatusCode != HttpStatusCode.OK && response.StatusCode != HttpStatusCode.Forbidden || response.ContentLength == 0)
+            //{
+            //    generateError((int)response.StatusCode, 90001, "Network Error");
+            //    return;
+            //}
+
             //Get server response async
             //HttpWebResponse response = (HttpWebResponse)await Task.Factory.FromAsync<WebResponse>(activeRequest.BeginGetResponse, activeRequest.EndGetResponse, null); 
-            //non 200 status, we retry
-            if (response.StatusCode != HttpStatusCode.OK && response.StatusCode != HttpStatusCode.Forbidden || response.ContentLength == 0)
+
+            if (response != null)
             {
-                if (callback != null)
+                //get the response body
+                string responseString = readResponseBody(response);
+                Dictionary<string, object> responseBody = (Dictionary<string, object>)JsonReader.Deserialize(responseString);
+
+                if(responseBody.ContainsKey("status"))
                 {
-                    callback.s2sCallback(this, generateError(response.StatusCode, 90001, "Network Error"));
-                    return true;
+                    object value = "";
+                    if (responseBody.TryGetValue("status", out value))
+                    {
+                        //status 200
+                        if((int)value == 200)
+                        {
+                            if(LoggingEnabled)
+                            {
+                                LogString("S2S Response: " + responseString);
+                            }
+
+                            //callback
+
+                            //remove the request
+                            _requestQueue.RemoveAt(0);
+                        }
+                        else
+                        {
+                            //check if its a session expiry
+                            if(responseBody.ContainsKey("reason_code"))
+                            {
+                                if(responseBody.TryGetValue("reason_code", out value))
+                                {
+                                    if((int)value == SERVER_SESSION_EXPIRED)
+                                    {
+                                        LogString("S2S session expired");
+                                        activeRequest.Abort();
+                                        disconnect();
+                                        return;
+                                    }
+                                }
+                            }
+
+                            LogString("S2S Failed: " + responseString);
+                            activeRequest.Abort();
+
+                            //callback
+
+                            //remove the request
+                            _requestQueue.RemoveAt(0);
+                        }
+                    }
+
                 }
             }
-            //get the response body
-            string responseBody = readResponseBody(response);
-            //status success?
-            //200
-            if (response.StatusCode == HttpStatusCode.OK)
-            {
-                //if log enabled...
-                //callback
-                //remove from the queue and process the next request
-                _requestQueue.RemoveAt(0);
-                if (_requestQueue.Count > 0)
-                {
-                    //grab the request at 0, and the data associated with it, and send the request
-                    KeyValuePair<HttpWebRequest, string> pair = _requestQueue[0];
-                    sendRequest(pair.Key, pair.Value);
-                }
-            }
-            else
-            {
-                //will want to see about deserialising the response body into a dictionary for easier access to its data.
-                //if(statusCode == 40365)
-                //cancel the request, and reset it
-                //disconnect
-                //re-request - will try to reauth
-                //return
-                //else 
-                //log error...
-                //cancel request
-                //callback
-                //remove from the queue and process the next request
-                _requestQueue.RemoveAt(0);
-                if (_requestQueue.Count > 0)
-                {
-                    //grab the request at 0, and the data associated with it, and send the request
-                    KeyValuePair<HttpWebRequest, string> pair = _requestQueue[0];
-                    sendRequest(pair.Key, pair.Value);
-                }
-            }
-            //status failed?
-            //status code 900.
         }
         //do a heartbeat if necessary.
         if (Authenticated)
         {
             if (DateTime.Now.Subtract(_lastHeartbeat) >= _heartbeatTimer)
             {
-                sendHeartbeat(onHeartbeatCallback);
+                sendHeartbeat();
                 resetHeartbeat();
             }
         }
@@ -302,38 +313,45 @@ internal sealed class BrainClouds2s : IS2SCallback
 
     public void onAuthenticationCallback(string jsonData)
     {
-        //probably going to have to have string parameter for this callback and deserialize the string into a dictionary. 
         if (jsonData != null)
         {
-            if (jsonData.ContainsKey("data"))
+            Dictionary<string, object> responseData = JsonReader.Deserialize<Dictionary<string, object>>(jsonData);
+            if (responseData.ContainsKey("data"))
             {
-                Dictionary<string, object> data = jsonData.TryGetValue("data");
-                if (data.ContainsKey("heartbeatSeconds"))
+                if (responseData.ContainsKey("heartbeatSeconds"))
                 {
-                    _heartbeatSeconds = data.TryGetValue("heartbeatSeconds");
+                    object value = "";
+                    if(responseData.TryGetValue("heartbeatSeconds", out value))
+                    {
+                        _heartbeatSeconds = (long) value;
+                    }
                 }
-                if (data.ContainsKey("sessionId"))
+                if (responseData.ContainsKey("sessionId"))
                 {
-                    SessionId = data.TryGetValue("sessionId");
+                    object value = "";
+                    if (responseData.TryGetValue("sessionId", out value))
+                    {
+                        SessionId = (string) value;
+                    }
                 }
                 resetHeartbeat();
-                Authenticated = true;
-                //authenticated!
+                Authenticated = true; //Authenticated!
             }
         }
     }
 
     public void onHeartbeatCallback(string jsonData)
     {
-        //probably going to have to have string parameter for this callback and deserialize the string into a dictionary. 
         if (jsonData != null)
         {
-            if (jsonData.Contains("status"))
+            Dictionary<string, object> responseData = JsonReader.Deserialize<Dictionary<string, object>>(jsonData);
+            if (responseData.ContainsKey("status"))
             {
-                //Status 200
-                if (jsonData.TryGetValue("status") != 200)
+                object value = "";
+                if (responseData.TryGetValue("status", out value))
                 {
-                    return;
+                    if((int)value == 200)
+                        return;
                 }
             }
         }
