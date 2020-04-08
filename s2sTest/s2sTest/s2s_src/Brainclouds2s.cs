@@ -159,8 +159,8 @@ internal sealed class BrainClouds2s : IS2SCallback
         requestStream.Write(byteArray, 0, byteArray.Length);        //writes dataPacket to stream and sends data with request. 
         request.ContentLength = byteArray.Length;
 
-        StreamReader readStream = new StreamReader(requestStream, Encoding.UTF8);
-        Console.WriteLine("stream: " + readStream.ReadToEnd());
+        //StreamReader readStream = new StreamReader(requestStream, Encoding.UTF8);
+        //Console.WriteLine("stream: " + readStream.ReadToEnd());
     }
 
     private void resetHeartbeat()
