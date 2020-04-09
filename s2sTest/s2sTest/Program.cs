@@ -7,7 +7,8 @@ namespace s2sTest
         static void Main(string[] args)
         {
             BrainClouds2s context = new BrainClouds2s();
-            context.Init("23730", "s2sTest", "24a3f6d6-2305-4e1d-9bc1-b39102d3be1b");
+            context.Init("20001", "TestServer", "2ddf8355-c516-48dd-a6b0-e35bd75fac80");
+            context.LoggingEnabled = true;
             
             Console.WriteLine(
                 "\nIsInitialised: " + context.IsInitialized +

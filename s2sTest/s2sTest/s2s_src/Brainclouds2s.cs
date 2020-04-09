@@ -28,7 +28,7 @@ internal sealed class BrainClouds2s : IS2SCallback
 {
     private static int NO_PACKET_EXPECTED = -1;
     private static int SERVER_SESSION_EXPIRED = 40365;
-    private static string DEFAULT_S2S_URL = "https://sharedprod.braincloudservers.com/s2sdispatcher";
+    private static string DEFAULT_S2S_URL = "https://internal.braincloudservers.com/s2sdispatcher";
     public string ServerURL
     {
         get; private set;
@@ -198,6 +198,7 @@ internal sealed class BrainClouds2s : IS2SCallback
 
     private string readResponseBody(HttpWebResponse response)
     {
+        Console.WriteLine("Reading Response Body...");
         // Get the stream associated with the response.
         Stream receiveStream = response.GetResponseStream();
         // Pipes the stream to a higher level stream reader with the required encoding format. 
@@ -225,7 +226,22 @@ internal sealed class BrainClouds2s : IS2SCallback
             sendData(activeRequest, requestPair.Value);
 
             //Send request and wait for server response
-            HttpWebResponse response = (HttpWebResponse)activeRequest.GetResponse();
+            //Send request and wait for server response
+            HttpWebResponse response = null;
+            try
+            {
+                response = (HttpWebResponse)activeRequest.GetResponse();
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine("S2S Failed: " + e.ToString());
+                LogString("S2S Failed: " + e.ToString());
+                activeRequest.Abort();
+                _requestQueue.RemoveAt(0);
+                return;
+            }
+
+            Console.WriteLine("good!");
 
             //if (response.StatusCode != HttpStatusCode.OK && response.StatusCode != HttpStatusCode.Forbidden || response.ContentLength == 0)
             //{
@@ -238,56 +254,78 @@ internal sealed class BrainClouds2s : IS2SCallback
 
             if (response != null)
             {
+                Console.WriteLine("We have a response!");
                 //get the response body
                 string responseString = readResponseBody(response);
+                Console.WriteLine(responseString);
+
                 Dictionary<string, object> responseBody = (Dictionary<string, object>)JsonReader.Deserialize(responseString);
-
-                if(responseBody.ContainsKey("status"))
+                Console.WriteLine(responseBody);
+                if(responseBody.ContainsKey("messageResponses"))
                 {
-                    object value = "";
-                    if (responseBody.TryGetValue("status", out value))
+                    //extract the map array
+                    Dictionary<string, object>[] messageArray = (Dictionary<string, object>[])responseBody["messageResponses"];
+                    //extract the map from the map array
+                    Dictionary<string, object> messageResponses = (Dictionary<string, object>)messageArray.GetValue(0);
+                    if((int)messageResponses["status"] == 200) 
                     {
-                        //status 200
-                        if((int)value == 200)
-                        {
-                            if(LoggingEnabled)
-                            {
-                                LogString("S2S Response: " + responseString);
-                            }
-
-                            //callback
-
-                            //remove the request
-                            _requestQueue.RemoveAt(0);
-                        }
-                        else
-                        {
-                            //check if its a session expiry
-                            if(responseBody.ContainsKey("reason_code"))
-                            {
-                                if(responseBody.TryGetValue("reason_code", out value))
-                                {
-                                    if((int)value == SERVER_SESSION_EXPIRED)
-                                    {
-                                        LogString("S2S session expired");
-                                        activeRequest.Abort();
-                                        disconnect();
-                                        return;
-                                    }
-                                }
-                            }
-
-                            LogString("S2S Failed: " + responseString);
-                            activeRequest.Abort();
-
-                            //callback
-
-                            //remove the request
-                            _requestQueue.RemoveAt(0);
-                        }
+                        int i = 0;
                     }
-
                 }
+                        
+                //Dictionary<string, object> messages = new Dictionary<string, object>();
+                // messages = (Dictionary<string, object>)messageResponses;
+                //Console.WriteLine(messageResponses);
+                //Console.WriteLine(messageResponses["status"]);
+
+                //if (messageResponses.ContainsKey("status"))
+                //{
+                //    Console.WriteLine("has a status");
+                //    object value = "";
+                //    if (responseBody.TryGetValue("status", out value))
+                //    {
+                //        //status 200
+                //        if ((int)value == 200)
+                //        {
+                //            Console.WriteLine("status is 200");
+                //            if (LoggingEnabled)
+                //            {
+                //                LogString("S2S Response: " + responseString);
+                //            }
+
+                //            //callback
+
+                //            //remove the request
+                //            _requestQueue.RemoveAt(0);
+                //        }
+                //        else
+                //        {
+                //            //check if its a session expiry
+                //            if (responseBody.ContainsKey("reason_code"))
+                //            {
+                //                if (responseBody.TryGetValue("reason_code", out value))
+                //                {
+                //                    if ((int)value == SERVER_SESSION_EXPIRED)
+                //                    {
+                //                        LogString("S2S session expired");
+                //                        activeRequest.Abort();
+                //                        disconnect();
+                //                        return;
+                //                    }
+                //                }
+                //            }
+
+                //            LogString("S2S Failed: " + responseString);
+                //            activeRequest.Abort();
+
+                //            //callback
+
+                //            //remove the request
+                //            _requestQueue.RemoveAt(0);
+                //        }
+                //    }
+
+                //}
             }
         }
         //do a heartbeat if necessary.
