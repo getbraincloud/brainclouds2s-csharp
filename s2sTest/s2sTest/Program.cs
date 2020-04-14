@@ -22,25 +22,29 @@ namespace s2sTest
                 "\nSessionID: " + context.SessionId
                 );
 
-            Dictionary<string, object> request = new Dictionary<string, object>();
-            request.Add("service", "log");
-            request.Add("operation", "LOG_INFO");
-            Dictionary<string, object> data = new Dictionary<string, object>();
-            data.Add("errorMessage", "test");
-            data.Add("context", "test");
-            request.Add("data", data);
+            //Dictionary<string, object> request = new Dictionary<string, object>();
+            //request.Add("service", "log");
+            //request.Add("operation", "LOG_INFO");
+            //Dictionary<string, object> data = new Dictionary<string, object>();
+            //data.Add("errorMessage", "test");
+            //data.Add("context", "test");
+            //request.Add("data", data);
 
-            string json = JsonWriter.Serialize(request);
-            context.request(json);
+            //string json = JsonWriter.Serialize(request);
+            //context.request(json, null);
 
             //context.request("{\"service\":\"heartbeat\",\"operation\":\"HEARTBEAT\"}");
-            //context.request("{\"service\":\"time\",\"operation\":\"READ\",\"data\":{}}");
+            context.request("{\"service\":\"time\",\"operation\":\"READ\",\"data\":{}}", TestCallback);
             //context.request("{\"service\":\"time\",\"operation\":\"READ\"}");
 
             while (true)
             {
                 context.runCallbacks();
             }
+        }
+        static void TestCallback(Dictionary<string, object> response)
+        {
+            Console.WriteLine("CALLBACK SUCCESS");
         }
     }
 }
