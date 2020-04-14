@@ -20,8 +20,8 @@ using BrainCloud.JsonFx.Json;
 
 public interface IS2SCallback
 {
-    void onAuthenticationCallback(string jsonResponseData);
-    void onHeartbeatCallback(string jsonResponseData);
+    void onAuthenticationCallback(Dictionary<string, object> responseData);
+    void onHeartbeatCallback(Dictionary<string, object> responseData);
 }
 
 internal sealed class BrainClouds2s : IS2SCallback
@@ -154,6 +154,8 @@ internal sealed class BrainClouds2s : IS2SCallback
     private void sendData(HttpWebRequest request, string dataPacket)
     {
         Console.WriteLine("Attempting to send data...");
+        Console.WriteLine("Request Queue size: " + _requestQueue.Count);
+        Console.WriteLine("Current data packet: " + dataPacket);
         byte[] byteArray = Encoding.UTF8.GetBytes(dataPacket);      //convert data packet to byte[]
         Stream requestStream = request.GetRequestStream();          //gets a stream to send dataPacket for request
         requestStream.Write(byteArray, 0, byteArray.Length);        //writes dataPacket to stream and sends data with request. 
@@ -243,15 +245,6 @@ internal sealed class BrainClouds2s : IS2SCallback
 
             Console.WriteLine("good!");
 
-            //if (response.StatusCode != HttpStatusCode.OK && response.StatusCode != HttpStatusCode.Forbidden || response.ContentLength == 0)
-            //{
-            //    generateError((int)response.StatusCode, 90001, "Network Error");
-            //    return;
-            //}
-
-            //Get server response async
-            //HttpWebResponse response = (HttpWebResponse)await Task.Factory.FromAsync<WebResponse>(activeRequest.BeginGetResponse, activeRequest.EndGetResponse, null); 
-
             if (response != null)
             {
                 Console.WriteLine("We have a response!");
@@ -261,71 +254,55 @@ internal sealed class BrainClouds2s : IS2SCallback
 
                 Dictionary<string, object> responseBody = (Dictionary<string, object>)JsonReader.Deserialize(responseString);
                 Console.WriteLine(responseBody);
-                if(responseBody.ContainsKey("messageResponses"))
+                if (responseBody.ContainsKey("messageResponses"))
                 {
                     //extract the map array
                     Dictionary<string, object>[] messageArray = (Dictionary<string, object>[])responseBody["messageResponses"];
                     //extract the map from the map array
                     Dictionary<string, object> messageResponses = (Dictionary<string, object>)messageArray.GetValue(0);
-                    if((int)messageResponses["status"] == 200) 
+                    if ((int)messageResponses["status"] == 200)
                     {
-                        int i = 0;
+                        Console.WriteLine("status is 200");
+                        if (LoggingEnabled)
+                        {
+                            LogString("S2S Response: " + responseString);
+                        }
+
+                        //we've authenticated
+                        if (SessionId == null)
+                        {
+                            onAuthenticationCallback((Dictionary<string, object>)messageResponses["data"]);
+                        }
+
+                        //remove the request
+                        _requestQueue.RemoveAt(0);
+                    }
+                    else
+                    {
+                        //check if its a session expiry
+                        //if (responseBody.ContainsKey("reason_code"))
+                        //{
+                        //    if (responseBody.TryGetValue("reason_code", out value))
+                        //    {
+                        //        if ((int)value == SERVER_SESSION_EXPIRED)
+                        //        {
+                        //            LogString("S2S session expired");
+                        //            activeRequest.Abort();
+                        //            disconnect();
+                        //            return;
+                        //        }
+                        //    }
+                        //}
+
+                        LogString("S2S Failed: " + responseString);
+                        activeRequest.Abort();
+
+                        //callback
+
+                        //remove the request
+                        _requestQueue.RemoveAt(0);
                     }
                 }
-                        
-                //Dictionary<string, object> messages = new Dictionary<string, object>();
-                // messages = (Dictionary<string, object>)messageResponses;
-                //Console.WriteLine(messageResponses);
-                //Console.WriteLine(messageResponses["status"]);
-
-                //if (messageResponses.ContainsKey("status"))
-                //{
-                //    Console.WriteLine("has a status");
-                //    object value = "";
-                //    if (responseBody.TryGetValue("status", out value))
-                //    {
-                //        //status 200
-                //        if ((int)value == 200)
-                //        {
-                //            Console.WriteLine("status is 200");
-                //            if (LoggingEnabled)
-                //            {
-                //                LogString("S2S Response: " + responseString);
-                //            }
-
-                //            //callback
-
-                //            //remove the request
-                //            _requestQueue.RemoveAt(0);
-                //        }
-                //        else
-                //        {
-                //            //check if its a session expiry
-                //            if (responseBody.ContainsKey("reason_code"))
-                //            {
-                //                if (responseBody.TryGetValue("reason_code", out value))
-                //                {
-                //                    if ((int)value == SERVER_SESSION_EXPIRED)
-                //                    {
-                //                        LogString("S2S session expired");
-                //                        activeRequest.Abort();
-                //                        disconnect();
-                //                        return;
-                //                    }
-                //                }
-                //            }
-
-                //            LogString("S2S Failed: " + responseString);
-                //            activeRequest.Abort();
-
-                //            //callback
-
-                //            //remove the request
-                //            _requestQueue.RemoveAt(0);
-                //        }
-                //    }
-
-                //}
             }
         }
         //do a heartbeat if necessary.
@@ -349,47 +326,31 @@ internal sealed class BrainClouds2s : IS2SCallback
         SessionId = null;
     }
 
-    public void onAuthenticationCallback(string jsonData)
+    public void onAuthenticationCallback(Dictionary<string, object> responseData)
     {
-        if (jsonData != null)
+        if (responseData != null)
         {
-            Dictionary<string, object> responseData = JsonReader.Deserialize<Dictionary<string, object>>(jsonData);
-            if (responseData.ContainsKey("data"))
+            if (responseData.ContainsKey("sessionId") && responseData.ContainsKey("heartbeatSeconds"))
             {
-                if (responseData.ContainsKey("heartbeatSeconds"))
-                {
-                    object value = "";
-                    if(responseData.TryGetValue("heartbeatSeconds", out value))
-                    {
-                        _heartbeatSeconds = (long) value;
-                    }
-                }
-                if (responseData.ContainsKey("sessionId"))
-                {
-                    object value = "";
-                    if (responseData.TryGetValue("sessionId", out value))
-                    {
-                        SessionId = (string) value;
-                    }
-                }
+                SessionId = (string)responseData["sessionId"];
+                _heartbeatSeconds = (int)responseData["heartbeatSeconds"];
                 resetHeartbeat();
                 Authenticated = true; //Authenticated!
+                Console.WriteLine("AUTHENITCATED!!!!!!!!!");
+                Console.WriteLine("SessionId = " + SessionId);
             }
         }
     }
 
-    public void onHeartbeatCallback(string jsonData)
+    public void onHeartbeatCallback(Dictionary<string, object> responseData)
     {
-        if (jsonData != null)
+        if (responseData != null)
         {
-            Dictionary<string, object> responseData = JsonReader.Deserialize<Dictionary<string, object>>(jsonData);
             if (responseData.ContainsKey("status"))
             {
-                object value = "";
-                if (responseData.TryGetValue("status", out value))
+                if ((int)responseData["status"] == 200)
                 {
-                    if((int)value == 200)
-                        return;
+                    return;
                 }
             }
         }
