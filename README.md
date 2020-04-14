@@ -38,8 +38,9 @@ string example:
   ```context.request("{\"service\":\"time\",\"operation\":\"READ\"}", null);```
 
 Dictionary example:
-  ```Dictionary<string, object> request = new Dictionary<string, object>();
+```
+  Dictionary<string, object> request = new Dictionary<string, object>();
   request.Add("service", "time");
   request.Add("operation", "READ");            
-  context.request(request, null);
+  context.request(request, null);```
   
