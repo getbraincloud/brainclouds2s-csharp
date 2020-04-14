@@ -22,18 +22,20 @@ namespace s2sTest
                 "\nSessionID: " + context.SessionId
                 );
 
-            //Dictionary<string, object> request = new Dictionary<string, object>();
-            //request.Add("service", "time");
-            //request.Add("operation", "READ");
-            //Dictionary<string, object> data = new Dictionary<string, object>();
-            //request.Add("data", data);
+            Dictionary<string, object> request = new Dictionary<string, object>();
+            request.Add("service", "log");
+            request.Add("operation", "LOG_INFO");
+            Dictionary<string, object> data = new Dictionary<string, object>();
+            data.Add("errorMessage", "test");
+            data.Add("context", "test");
+            request.Add("data", data);
 
-            //string json = JsonWriter.Serialize(request);
-            //context.request(json);
+            string json = JsonWriter.Serialize(request);
+            context.request(json);
 
             //context.request("{\"service\":\"heartbeat\",\"operation\":\"HEARTBEAT\"}");
-            context.request("{\"service\":\"time\",\"operation\":\"READ\",\"data\":\"{}\"}");
-            context.request("{\"service\":\"time\",\"operation\":\"READ\"}");
+            //context.request("{\"service\":\"time\",\"operation\":\"READ\",\"data\":{}}");
+            //context.request("{\"service\":\"time\",\"operation\":\"READ\"}");
 
             while (true)
             {

@@ -65,7 +65,7 @@ internal sealed class BrainClouds2s : IS2SCallback
     private long _heartbeatSeconds = 1800; //Default to 30 mins  
     private TimeSpan _heartbeatTimer;
     private DateTime _lastHeartbeat;
-    private static Mutex _lock = new Mutex();
+    private static Object _lock = new Object();
     private ArrayList _requestQueue = new ArrayList();
 
     /**
@@ -99,6 +99,8 @@ internal sealed class BrainClouds2s : IS2SCallback
         ServerName = serverName;
         SessionId = null;
         _heartbeatTimer = TimeSpan.FromSeconds(_heartbeatSeconds);
+
+        Console.WriteLine("\nInitialized!");
     }
 
     /**
@@ -109,6 +111,7 @@ internal sealed class BrainClouds2s : IS2SCallback
     */
     public void request(string jsonRequestData)
     {
+        Console.WriteLine("\nMaking a request...");
         if (!Authenticated)
         {
             Console.WriteLine("\nNot Authenticated");
@@ -119,25 +122,21 @@ internal sealed class BrainClouds2s : IS2SCallback
 
     private void formRequest(string jsonRequestData)
     {
-        Console.WriteLine("forming new request with: " + jsonRequestData);
+        Console.WriteLine("\nforming new request with: " + jsonRequestData);
         //create new request
         HttpWebRequest request = (HttpWebRequest)WebRequest.Create(ServerURL);
-        //create data packet
-        string dataPacket = createPacket(jsonRequestData);
-        Console.WriteLine("Created Packet: " + dataPacket);
 
         //customize request
         request.Method = "POST";
         request.ContentType = "application/json; charset=utf-8";
 
-        _requestQueue.Add(new KeyValuePair<HttpWebRequest, string>(request, dataPacket));         //store request and associated dataPacket
+        _requestQueue.Add(new KeyValuePair<HttpWebRequest, string>(request, jsonRequestData));         //store request and associated dataPacket
         Console.WriteLine("Request Queue size: " + _requestQueue.Count);
-
-        _packetId++;
     }
 
     private string createPacket(string packetData)
     {
+        Console.WriteLine("\nCreating Packet...");
         //form the packet
         string packetDataString = "{\"packetId\":" + (int)_packetId;
         if (SessionId != null)
@@ -147,16 +146,27 @@ internal sealed class BrainClouds2s : IS2SCallback
                 packetDataString += ",\"sessionId\":\"" + SessionId + "\"";
             }
         }
+        if (AppId != null)
+        {
+            packetDataString += ",\"appId\":\"" + AppId + "\"";
+        }
         packetDataString += ",\"messages\":[" + packetData + "]}";
+
+        _packetId++;
+
         return packetDataString;
     }
 
     private void sendData(HttpWebRequest request, string dataPacket)
     {
-        Console.WriteLine("Attempting to send data...");
-        Console.WriteLine("Request Queue size: " + _requestQueue.Count);
-        Console.WriteLine("Current data packet: " + dataPacket);
-        byte[] byteArray = Encoding.UTF8.GetBytes(dataPacket);      //convert data packet to byte[]
+        Console.WriteLine("\nAttempting to send data...");
+        Console.WriteLine("\nCurrent data packet: " + dataPacket);
+
+        //create data packet of the data with packetId info
+        string packet = createPacket(dataPacket);
+        Console.WriteLine("\nCreated Packet: " + packet);
+
+        byte[] byteArray = Encoding.UTF8.GetBytes(packet);      //convert data packet to byte[]
         Stream requestStream = request.GetRequestStream();          //gets a stream to send dataPacket for request
         requestStream.Write(byteArray, 0, byteArray.Length);        //writes dataPacket to stream and sends data with request. 
         request.ContentLength = byteArray.Length;
@@ -182,7 +192,7 @@ internal sealed class BrainClouds2s : IS2SCallback
 
     public void authenticate()
     {
-        Console.WriteLine("Creating Authentication request...");
+        Console.WriteLine("\nCreating Authentication request...");
         string jsonAuthString = "{\"service\":\"authenticationV2\",\"operation\":\"AUTHENTICATE\",\"data\":{\"appId\":\"" + AppId + "\",\"serverName\":\"" + ServerName + "\",\"serverSecret\":\"" + ServerSecret + "\"}}";
         _packetId = 0;
         formRequest(jsonAuthString);
@@ -228,15 +238,16 @@ internal sealed class BrainClouds2s : IS2SCallback
             sendData(activeRequest, requestPair.Value);
 
             //Send request and wait for server response
-            //Send request and wait for server response
             HttpWebResponse response = null;
             try
             {
-                response = (HttpWebResponse)activeRequest.GetResponse();
+                lock (_lock)
+                {
+                    response = (HttpWebResponse)activeRequest.GetResponse();
+                }
             }
             catch (Exception e)
             {
-                Console.WriteLine("S2S Failed: " + e.ToString());
                 LogString("S2S Failed: " + e.ToString());
                 activeRequest.Abort();
                 _requestQueue.RemoveAt(0);
@@ -247,7 +258,7 @@ internal sealed class BrainClouds2s : IS2SCallback
 
             if (response != null)
             {
-                Console.WriteLine("We have a response!");
+                Console.WriteLine("\nWe have a response!");
                 //get the response body
                 string responseString = readResponseBody(response);
                 Console.WriteLine(responseString);
@@ -265,7 +276,7 @@ internal sealed class BrainClouds2s : IS2SCallback
                         Console.WriteLine("status is 200");
                         if (LoggingEnabled)
                         {
-                            LogString("S2S Response: " + responseString);
+                            LogString("\nS2S Response: " + responseString);
                         }
 
                         //we've authenticated
@@ -277,34 +288,30 @@ internal sealed class BrainClouds2s : IS2SCallback
                         //remove the request
                         _requestQueue.RemoveAt(0);
                     }
-                    else
+                }
+                else
+                {
+                    //check if its a session expiry
+                    if (responseBody.ContainsKey("reason_code"))
                     {
-                        //check if its a session expiry
-                        //if (responseBody.ContainsKey("reason_code"))
-                        //{
-                        //    if (responseBody.TryGetValue("reason_code", out value))
-                        //    {
-                        //        if ((int)value == SERVER_SESSION_EXPIRED)
-                        //        {
-                        //            LogString("S2S session expired");
-                        //            activeRequest.Abort();
-                        //            disconnect();
-                        //            return;
-                        //        }
-                        //    }
-                        //}
-
-                        LogString("S2S Failed: " + responseString);
-                        activeRequest.Abort();
-
-                        //callback
-
-                        //remove the request
-                        _requestQueue.RemoveAt(0);
+                        if ((int)responseBody["reason_code"] == SERVER_SESSION_EXPIRED)
+                        {
+                            LogString("\nS2S session expired");
+                            activeRequest.Abort();
+                            disconnect();
+                            return;
+                        }
                     }
+
+                    LogString("\nS2S Failed: " + responseString);
+                    activeRequest.Abort();
+
+                    //remove the request
+                    _requestQueue.RemoveAt(0);
                 }
             }
         }
+
         //do a heartbeat if necessary.
         if (Authenticated)
         {
@@ -312,6 +319,7 @@ internal sealed class BrainClouds2s : IS2SCallback
             {
                 sendHeartbeat();
                 resetHeartbeat();
+                Console.WriteLine("\nSessionId : " + SessionId);
             }
         }
     }
@@ -336,8 +344,8 @@ internal sealed class BrainClouds2s : IS2SCallback
                 _heartbeatSeconds = (int)responseData["heartbeatSeconds"];
                 resetHeartbeat();
                 Authenticated = true; //Authenticated!
-                Console.WriteLine("AUTHENITCATED!!!!!!!!!");
-                Console.WriteLine("SessionId = " + SessionId);
+                Console.WriteLine("\nAUTHENITCATED!!!!!!!!!");
+                Console.WriteLine("\nSessionId = " + SessionId);
             }
         }
     }
@@ -356,5 +364,4 @@ internal sealed class BrainClouds2s : IS2SCallback
         }
         disconnect();
     }
-
 }
