@@ -9,40 +9,31 @@ namespace s2sTest
     {
         static void Main(string[] args)
         {
-            BrainClouds2s context = new BrainClouds2s();
-            context.Init("20001", "TestServer", "2ddf8355-c516-48dd-a6b0-e35bd75fac80");
+            BrainCloudS2S context = new BrainCloudS2S();
+            context.init("20001", "TestServer", "2ddf8355-c516-48dd-a6b0-e35bd75fac80");
             context.LoggingEnabled = true;
-            
-            Console.WriteLine(
-                "\nIsInitialised: " + context.IsInitialized +
-                "\nServerURL: " + context.ServerURL +
-                "\nAppId: " + context.AppId + 
-                "\nServerSecret: " + context.ServerSecret + 
-                "\nServerName: " + context.ServerName + 
-                "\nSessionID: " + context.SessionId
-                );
 
-            //Dictionary<string, object> request = new Dictionary<string, object>();
-            //request.Add("service", "log");
-            //request.Add("operation", "LOG_INFO");
-            //Dictionary<string, object> data = new Dictionary<string, object>();
-            //data.Add("errorMessage", "test");
-            //data.Add("context", "test");
-            //request.Add("data", data);
+            //SEND AS DICTIONARY
+            Dictionary<string, object> request = new Dictionary<string, object>();
+            request.Add("service", "log");
+            request.Add("operation", "LOG_INFO");
+            Dictionary<string, object> data = new Dictionary<string, object>();
+            data.Add("errorMessage", "test");
+            data.Add("context", "test");
+            request.Add("data", data);
+            context.request(request, testCallback);
+            //context.request(request, null);
 
-            //string json = JsonWriter.Serialize(request);
-            //context.request(json, null);
-
-            //context.request("{\"service\":\"heartbeat\",\"operation\":\"HEARTBEAT\"}");
-            context.request("{\"service\":\"time\",\"operation\":\"READ\",\"data\":{}}", TestCallback);
-            //context.request("{\"service\":\"time\",\"operation\":\"READ\"}");
+            //SEND AS STRING
+            context.request("{\"service\":\"time\",\"operation\":\"READ\"}", testCallback);
+            //context.request("{\"service\":\"time\",\"operation\":\"READ\"}", null);
 
             while (true)
             {
                 context.runCallbacks();
             }
         }
-        static void TestCallback(Dictionary<string, object> response)
+        static void testCallback(Dictionary<string, object> response)
         {
             Console.WriteLine("CALLBACK SUCCESS");
         }
