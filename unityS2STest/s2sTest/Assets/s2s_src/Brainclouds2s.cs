@@ -2,14 +2,23 @@
 // brainCloud client source code
 // Copyright 2020 bitHeads, inc.
 //----------------------------------------------------
+#if ((UNITY_5_3_OR_NEWER) && !UNITY_WEBPLAYER && (!UNITY_IOS || ENABLE_IL2CPP)) || UNITY_2018_3_OR_NEWER
+#define USE_WEB_REQUEST //Comment out to force use of old WWW class on Unity 5.3+
+#endif
 
 using System;
 using System.Collections.Generic;
 using System.Text;
+#if DOT_NET
 using System.Net;
 using System.Net.Http;
 using System.Threading.Tasks;
 using System.Threading;
+#endif
+#if USE_WEB_REQUEST
+using UnityEngine.Networking;
+using UnityEngine;
+#endif
 using System.IO;
 using System.Collections;
 using System.Runtime.Serialization;
@@ -61,7 +70,13 @@ internal sealed class BrainCloudS2S
 
     private struct S2SRequest
     {
+#if DOT_NET
         public HttpWebRequest request;
+#endif
+#if USE_WEB_REQUEST
+        public UnityWebRequest request;
+        public Dictionary<string, string> formData;
+#endif
         public string requestData;
         public S2SCallback callback;
     }
@@ -140,18 +155,36 @@ internal sealed class BrainCloudS2S
 
     private void formRequest(string jsonRequestData, S2SCallback callback)
     {
+#if DOT_NET
         //create new request
         HttpWebRequest httpRequest = (HttpWebRequest)WebRequest.Create(ServerURL);
 
         //customize request
         httpRequest.Method = "POST";
         httpRequest.ContentType = "application/json; charset=utf-8";
+#endif
+#if USE_WEB_REQUEST
+        //todo
+        Dictionary<string, string> formData = new Dictionary<string, string>();
+        
+        //create new request
+        UnityWebRequest httpRequest = UnityWebRequest.Post(ServerURL, formData);
 
+        //customize request
+        httpRequest.SetRequestHeader("Content-Type", "application/json; charset=utf-8");
+        if (AppId != null && AppId.Length > 0)
+        {
+            httpRequest.SetRequestHeader("X-APPID", AppId);
+        }
+#endif
         //store request info
         S2SRequest req = new S2SRequest();
         req.request = httpRequest;
         req.requestData = jsonRequestData;
         req.callback = callback;
+#if USE_WEB_REQUEST
+        req.formData = formData;
+#endif
 
         //add to requestqueue
         _requestQueue.Add(req);         
@@ -178,7 +211,7 @@ internal sealed class BrainCloudS2S
 
         return packetDataString;
     }
-
+#if DOT_NET
     private void sendData(HttpWebRequest request, string dataPacket)
     {
         string packet = createPacket(dataPacket);                   //create data packet of the data with packetId info
@@ -186,10 +219,26 @@ internal sealed class BrainCloudS2S
         logString("Sending Request: " + packet);
 
         byte[] byteArray = Encoding.UTF8.GetBytes(packet);          //convert data packet to byte[]
+
         Stream requestStream = request.GetRequestStream();          //gets a stream to send dataPacket for request
         requestStream.Write(byteArray, 0, byteArray.Length);        //writes dataPacket to stream and sends data with request. 
         request.ContentLength = byteArray.Length;
     }
+#endif
+
+#if USE_WEB_REQUEST
+    private void sendData(UnityWebRequest request, string dataPacket)
+    {
+        string packet = createPacket(dataPacket);                   //create data packet of the data with packetId info
+
+        logString("Sending Request: " + packet);
+
+        byte[] byteArray = Encoding.UTF8.GetBytes(packet);          //convert data packet to byte[]
+        request.uploadHandler = new UploadHandlerRaw(byteArray);    //prepare data
+        request.SetRequestHeader("X-SIG", packet);                  //set x-sig
+    }
+#endif
+
 
     private void resetHeartbeat()
     {
@@ -212,12 +261,14 @@ internal sealed class BrainCloudS2S
         }
     }
 
+#if DOT_NET
     private string readResponseBody(HttpWebResponse response)
     {
         Stream receiveStream = response.GetResponseStream();                        // Get the stream associated with the response.
         StreamReader readStream = new StreamReader(receiveStream, Encoding.UTF8);   // Pipes the stream to a higher level stream reader with the required encoding format. 
         return readStream.ReadToEnd();
     }
+#endif
 
     private void logString(string s)
     {
@@ -226,6 +277,13 @@ internal sealed class BrainCloudS2S
             Console.WriteLine("\n#BCC " + s);
         }
     }
+
+#if USE_WEB_REQUEST
+    IEnumerator SendUnityWebRequest(UnityWebRequest request)
+    {
+        yield return request.SendWebRequest();
+    }
+#endif
 
     public void runCallbacks()
     {
@@ -236,7 +294,7 @@ internal sealed class BrainCloudS2S
 
             //send the request data
             sendData(activeRequest.request, activeRequest.requestData);
-
+#if DOT_NET
             //Send request and wait for server response
             HttpWebResponse response = null;
             try
@@ -250,11 +308,22 @@ internal sealed class BrainCloudS2S
                 _requestQueue.RemoveAt(0);
                 return;
             }
+#endif
+#if USE_WEB_REQUEST
+            SendUnityWebRequest(activeRequest.request);
+            var response = activeRequest.request.downloadHandler.text;
+#endif
 
             if (response != null)
             {
+#if DOT_NET
                 //get the response body
                 string responseString = readResponseBody(response);
+#endif
+#if USE_WEB_REQUEST
+                //get the response body
+                string responseString = response;
+#endif
                 Dictionary<string, object> responseBody = (Dictionary<string, object>)JsonReader.Deserialize(responseString);
 
                 if (responseBody.ContainsKey("messageResponses"))
