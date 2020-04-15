@@ -18,13 +18,7 @@ using System.Collections;
 using System.Runtime.Serialization;
 using BrainCloud.JsonFx.Json;
 
-//public interface IS2SCallback
-//{
-//    void onAuthenticationCallback(Dictionary<string, object> responseData);
-//    void onHeartbeatCallback(Dictionary<string, object> responseData);
-//}
-
-internal sealed class BrainCloudS2S //: IS2SCallback
+internal sealed class BrainCloudS2S
 {
     private static int NO_PACKET_EXPECTED = -1;
     private static int SERVER_SESSION_EXPIRED = 40365;
