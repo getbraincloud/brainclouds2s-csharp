@@ -112,6 +112,7 @@ internal sealed class BrainCloudS2S
         ServerName = serverName;
         SessionId = null;
         _heartbeatTimer = TimeSpan.FromSeconds(_heartbeatSeconds);
+        Debug.Log("INITIALIZED");
     }
 
     /**
@@ -130,6 +131,7 @@ internal sealed class BrainCloudS2S
     */
     public void request(string jsonRequestData, S2SCallback callback)
     {
+        logString("Making Request: " + jsonRequestData);
         if (!Authenticated && _requestQueue.Count == 0) //only do this for the first request a client attempts to make, since we only want to authenticate once. 
         {
             authenticate(onAuthenticationCallback);
@@ -145,6 +147,7 @@ internal sealed class BrainCloudS2S
     */
     public void request(Dictionary<string, object> jsonRequestData, S2SCallback callback)
     {
+        logString("Making Request: " + jsonRequestData);
         string jsonString = JsonWriter.Serialize(jsonRequestData);
         if (!Authenticated)
         {
@@ -186,6 +189,8 @@ internal sealed class BrainCloudS2S
         req.formData = formData;
 #endif
 
+        logString("Request: " + req.request + " Data: " + req.requestData);
+
         //add to requestqueue
         _requestQueue.Add(req);         
     }
@@ -208,6 +213,8 @@ internal sealed class BrainCloudS2S
         packetDataString += ",\"messages\":[" + packetData + "]}";
 
         _packetId++;
+
+        logString("Creating Packet: " + packetDataString);
 
         return packetDataString;
     }
@@ -274,7 +281,12 @@ internal sealed class BrainCloudS2S
     {
         if (LoggingEnabled)
         {
+#if DOT_NET
             Console.WriteLine("\n#BCC " + s);
+#endif
+#if USE_WEB_REQUEST
+            Debug.Log("\n#BCC " + s);
+#endif
         }
     }
 
