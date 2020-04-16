@@ -324,8 +324,8 @@ internal sealed class BrainCloudS2S
 #if USE_WEB_REQUEST
             SendUnityWebRequest(activeRequest.request);
             var response = activeRequest.request.downloadHandler.text;
+            logString("Response: " + response);
 #endif
-
             if (response != null)
             {
 #if DOT_NET
@@ -335,6 +335,7 @@ internal sealed class BrainCloudS2S
 #if USE_WEB_REQUEST
                 //get the response body
                 string responseString = response;
+                logString("Response String: " + responseString);
 #endif
                 Dictionary<string, object> responseBody = (Dictionary<string, object>)JsonReader.Deserialize(responseString);
 
