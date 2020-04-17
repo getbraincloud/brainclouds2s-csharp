@@ -432,6 +432,9 @@ public class BrainCloudS2S
                     S2SRequest req = (S2SRequest)_waitingForAuthRequestQueue[i];
                     request(req.requestData, req.callback);
                 }
+
+                //clear in case a reauthentication is needed.
+                _waitingForAuthRequestQueue.Clear();
             }
         }
     }
