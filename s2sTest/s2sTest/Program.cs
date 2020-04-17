@@ -25,8 +25,10 @@ namespace s2sTest
             //context.request(request, null);
 
             //SEND AS STRING
+
             context.request("{\"service\":\"time\",\"operation\":\"READ\"}", testCallback);
             //context.request("{\"service\":\"time\",\"operation\":\"READ\"}", null);
+
 
             while (true)
             {
