@@ -70,7 +70,6 @@ public class BrainCloudS2S
     private ArrayList _requestQueue = new ArrayList();
     private ArrayList _waitingForAuthRequestQueue = new ArrayList();
     public delegate void S2SCallback(Dictionary<string, object> response);
-    public delegate void StoredRequestCall(string jsonRequestData, S2SCallback callback);
 
     private struct S2SRequest
     {
@@ -309,11 +308,6 @@ public class BrainCloudS2S
         {
             //make first request in queue the active request
             S2SRequest activeRequest = (S2SRequest)_requestQueue[0];
-
-            logString("auth: " + Authenticated);
-
-            //send the request data
-            //sendData(activeRequest.request, activeRequest.requestData);
 #if DOT_NET
             HttpWebResponse response = null;
 
@@ -333,9 +327,7 @@ public class BrainCloudS2S
             string response = null;
             if(activeRequest.request.downloadHandler.isDone)
             {
-                logString("IN HERE");
                 response = activeRequest.request.downloadHandler.text;
-                logString("Response: " + response);
             }
 #endif
             if (response != null)
@@ -347,7 +339,6 @@ public class BrainCloudS2S
 #if USE_WEB_REQUEST
                 //get the response body
                 string responseString = response;
-                logString("Response String: " + responseString);
 #endif
                 Dictionary<string, object> responseBody = (Dictionary<string, object>)JsonReader.Deserialize(responseString);
 

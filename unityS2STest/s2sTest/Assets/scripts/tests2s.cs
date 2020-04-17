@@ -20,12 +20,17 @@ public class tests2s : MonoBehaviour
         data.Add("errorMessage", "test");
         data.Add("context", "test");
         request.Add("data", data);
-        context.request(request, null);
+        context.request(request, TestCallback);
     }
 
     // Update is called once per frame
     void Update()
     {
         context.runCallbacks();
+    }
+
+    void TestCallback(Dictionary<string, object> response)
+    {
+        Debug.Log("Callback Success!");
     }
 }
