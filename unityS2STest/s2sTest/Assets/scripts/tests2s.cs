@@ -9,7 +9,7 @@ public class tests2s : MonoBehaviour
     void Start()
     {
         context = new BrainCloudS2S();
-        context.init("20001", "TestServer", "2ddf8355-c516-48dd-a6b0-e35bd75fac80");
+        context.init("20001", "TestServer", "2ddf8355-c516-48dd-a6b0-e35bd75fac80", "https://internal.braincloudservers.com/s2sdispatcher");
         context.LoggingEnabled = true;
 
         //SEND AS DICTIONARY

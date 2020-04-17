@@ -15,11 +15,11 @@ using System.Collections;
 using System.Runtime.Serialization;
 using BrainCloud.JsonFx.Json;
 
-internal sealed class BrainCloudS2S
+public class BrainCloudS2S
 {
     private static int NO_PACKET_EXPECTED = -1;
     private static int SERVER_SESSION_EXPIRED = 40365;
-    private static string DEFAULT_S2S_URL = "https://internal.braincloudservers.com/s2sdispatcher";
+    private static string DEFAULT_S2S_URL = "https://sharedprod.braincloudservers.com/s2sdispatcher";
     public string ServerURL
     {
         get; private set;

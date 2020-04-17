@@ -24,11 +24,11 @@ using System.Collections;
 using System.Runtime.Serialization;
 using BrainCloud.JsonFx.Json;
 
-internal sealed class BrainCloudS2S
+public class BrainCloudS2S
 {
     private static int NO_PACKET_EXPECTED = -1;
     private static int SERVER_SESSION_EXPIRED = 40365;
-    private static string DEFAULT_S2S_URL = "https://internal.braincloudservers.com/s2sdispatcher";
+    private static string DEFAULT_S2S_URL = "https://sharedprod.braincloudservers.com/s2sdispatcher";
     public string ServerURL
     {
         get; private set;
@@ -75,7 +75,6 @@ internal sealed class BrainCloudS2S
 #endif
 #if USE_WEB_REQUEST
         public UnityWebRequest request;
-        public Dictionary<string, string> formData;
 #endif
         public string requestData;
         public S2SCallback callback;
@@ -167,27 +166,18 @@ internal sealed class BrainCloudS2S
         httpRequest.ContentType = "application/json; charset=utf-8";
 #endif
 #if USE_WEB_REQUEST
-        //todo
-        Dictionary<string, string> formData = new Dictionary<string, string>();
         
         //create new request
-        UnityWebRequest httpRequest = UnityWebRequest.Post(ServerURL, formData);
+        UnityWebRequest httpRequest = UnityWebRequest.Post(ServerURL, new Dictionary<string, string>());
 
         //customize request
         httpRequest.SetRequestHeader("Content-Type", "application/json; charset=utf-8");
-        if (AppId != null && AppId.Length > 0)
-        {
-            httpRequest.SetRequestHeader("X-APPID", AppId);
-        }
 #endif
         //store request info
         S2SRequest req = new S2SRequest();
         req.request = httpRequest;
         req.requestData = jsonRequestData;
         req.callback = callback;
-#if USE_WEB_REQUEST
-        req.formData = formData;
-#endif
 
         logString("Request: " + req.request + " Data: " + req.requestData);
 
@@ -242,7 +232,8 @@ internal sealed class BrainCloudS2S
 
         byte[] byteArray = Encoding.UTF8.GetBytes(packet);          //convert data packet to byte[]
         request.uploadHandler = new UploadHandlerRaw(byteArray);    //prepare data
-        request.SetRequestHeader("X-SIG", packet);                  //set x-sig
+
+        request.SendWebRequest();
     }
 #endif
 
@@ -290,13 +281,6 @@ internal sealed class BrainCloudS2S
         }
     }
 
-#if USE_WEB_REQUEST
-    IEnumerator SendUnityWebRequest(UnityWebRequest request)
-    {
-        yield return request.SendWebRequest();
-    }
-#endif
-
     public void runCallbacks()
     {
         if (_requestQueue.Count != 0)
@@ -305,7 +289,7 @@ internal sealed class BrainCloudS2S
             S2SRequest activeRequest = (S2SRequest)_requestQueue[0];
 
             //send the request data
-            sendData(activeRequest.request, activeRequest.requestData);
+            //sendData(activeRequest.request, activeRequest.requestData);
 #if DOT_NET
             //Send request and wait for server response
             HttpWebResponse response = null;
@@ -322,9 +306,13 @@ internal sealed class BrainCloudS2S
             }
 #endif
 #if USE_WEB_REQUEST
-            SendUnityWebRequest(activeRequest.request);
-            var response = activeRequest.request.downloadHandler.text;
-            logString("Response: " + response);
+            string response = null;
+            if(activeRequest.request.downloadHandler.isDone)
+            {
+                logString("IN HERE");
+                response = activeRequest.request.downloadHandler.text;
+                logString("Response: " + response);
+            }
 #endif
             if (response != null)
             {
