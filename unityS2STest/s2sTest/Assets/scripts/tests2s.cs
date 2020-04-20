@@ -9,7 +9,7 @@ public class tests2s : MonoBehaviour
     void Start()
     {
         context = new BrainCloudS2S();
-        context.init("20001", "TestServer", "2ddf8355-c516-48dd-a6b0-e35bd75fac80", "https://internal.braincloudservers.com/s2sdispatcher");
+        context.Init("20001", "TestServer", "2ddf8355-c516-48dd-a6b0-e35bd75fac80", "https://internal.braincloudservers.com/s2sdispatcher");
         context.LoggingEnabled = true;
 
         //SEND AS DICTIONARY
@@ -20,13 +20,13 @@ public class tests2s : MonoBehaviour
         data.Add("errorMessage", "test");
         data.Add("context", "test");
         request.Add("data", data);
-        context.request(request, TestCallback);
+        context.Request(request, TestCallback);
     }
 
     // Update is called once per frame
     void Update()
     {
-        context.runCallbacks();
+        context.RunCallbacks();
     }
 
     void TestCallback(Dictionary<string, object> response)
