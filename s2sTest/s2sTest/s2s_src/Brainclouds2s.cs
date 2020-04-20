@@ -415,27 +415,30 @@ public class BrainCloudS2S
     {
         if (response != null)
         {
-            Dictionary<string, object> data = (Dictionary<string, object>)response["data"];
-            if (data.ContainsKey("sessionId") && data.ContainsKey("heartbeatSeconds"))
+            ////check if its a failure
+            if (!response.ContainsKey("reason_code"))
             {
-                SessionId = (string)data["sessionId"];
-                if (data.ContainsKey("heartbeatSeconds"))
+                Dictionary<string, object> data = (Dictionary<string, object>)response["data"];
+                if (data.ContainsKey("sessionId") && data.ContainsKey("heartbeatSeconds"))
                 {
-                    _heartbeatSeconds = (int)data["heartbeatSeconds"];
+                    SessionId = (string)data["sessionId"];
+                    if (data.ContainsKey("heartbeatSeconds"))
+                    {
+                        _heartbeatSeconds = (int)data["heartbeatSeconds"];
+                    }
+
+                    ResetHeartbeat();
+                    Authenticated = true;
+
+                    for (int i = 0; i < _waitingForAuthRequestQueue.Count; i++)
+                    {
+                        S2SRequest req = (S2SRequest)_waitingForAuthRequestQueue[i];
+                        Request(req.requestData, req.callback);
+                    }
                 }
-
-                ResetHeartbeat();
-                Authenticated = true;
-
-                for(int i = 0; i < _waitingForAuthRequestQueue.Count; i++)
-                {
-                    S2SRequest req = (S2SRequest)_waitingForAuthRequestQueue[i];
-                    Request(req.requestData, req.callback);
-                }
-
-                //clear in case a reauthentication is needed.
-                _waitingForAuthRequestQueue.Clear();
             }
+            //clear in case a reauthentication is needed.
+            _waitingForAuthRequestQueue.Clear();
         }
     }
 
