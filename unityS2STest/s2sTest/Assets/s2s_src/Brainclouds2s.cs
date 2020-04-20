@@ -375,13 +375,14 @@ public class BrainCloudS2S
                         }
 
                         LogString("S2S Failed: " + responseString);
-                        activeRequest.request.Abort();
 
                         //callback
                         if (activeRequest.callback != null)
                         {
                             activeRequest.callback((Dictionary<string, object>)messageResponses);
                         }
+
+                        activeRequest.request.Abort();
 
                         //remove the request
                         _requestQueue.RemoveAt(0);

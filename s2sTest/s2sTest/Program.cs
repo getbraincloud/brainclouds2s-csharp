@@ -15,18 +15,17 @@ namespace s2sTest
 
             //SEND AS DICTIONARY
             Dictionary<string, object> request = new Dictionary<string, object>();
-            request.Add("service", "log");
-            request.Add("operation", "LOG_INFO");
+            request.Add("service", "lobby");
+            request.Add("operation", "GET_LOBBY_DATA");
             Dictionary<string, object> data = new Dictionary<string, object>();
-            data.Add("errorMessage", "test");
-            data.Add("context", "test");
+            data.Add("lobbyId", "1283712");
+            //data.Add("context", "test");
             request.Add("data", data);
             context.Request(request, testCallback);
             //context.request(request, null);
 
             //SEND AS STRING
-
-            context.Request("{\"service\":\"time\",\"operation\":\"READ\"}", testCallback);
+            //context.Request("{\"service\":\"time\",\"operation\":\"READ\"}", testCallback);
             //context.request("{\"service\":\"time\",\"operation\":\"READ\"}", null);
 
 

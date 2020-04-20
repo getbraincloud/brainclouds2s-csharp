@@ -14,11 +14,11 @@ public class tests2s : MonoBehaviour
 
         //SEND AS DICTIONARY
         Dictionary<string, object> request = new Dictionary<string, object>();
-        request.Add("service", "log");
-        request.Add("operation", "LOG_INFO");
+        request.Add("service", "lobby");
+        request.Add("operation", "GET_LOBBY_DATA");
         Dictionary<string, object> data = new Dictionary<string, object>();
-        data.Add("errorMessage", "test");
-        data.Add("context", "test");
+        data.Add("lobbyId", "8395474985"); //fail
+        //data.Add("context", "test");
         request.Add("data", data);
         context.Request(request, TestCallback);
     }
