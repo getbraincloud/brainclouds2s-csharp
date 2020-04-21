@@ -10,7 +10,8 @@ namespace s2sTest
         static void Main(string[] args)
         {
             BrainCloudS2S context = new BrainCloudS2S();
-            context.Init("20001", "TestServer", "2ddf8355-c516-48dd-a6b0-e35bd75fac80", "https://internal.braincloudservers.com/s2sdispatcher");
+            context.Init("", "TestServer", "2ddf8355-c516-48dd-a6b0-e35bd75fac80", "https://internal.braincloudservers.com/s2sdispatcher");
+            //context.Init("", "", "");
             context.LoggingEnabled = true;
 
             //SEND AS DICTIONARY
@@ -34,7 +35,7 @@ namespace s2sTest
                 context.RunCallbacks();
             }
         }
-        static void testCallback(Dictionary<string, object> response)
+        static void testCallback(string response)
         {
             Console.WriteLine("CALLBACK SUCCESS");
         }

@@ -10,6 +10,7 @@ public class tests2s : MonoBehaviour
     {
         context = new BrainCloudS2S();
         context.Init("20001", "TestServer", "2ddf8355-c516-48dd-a6b0-e35bd75fac80", "https://internal.braincloudservers.com/s2sdispatcher");
+        //context.Init("", "", "");
         context.LoggingEnabled = true;
 
         //SEND AS DICTIONARY
@@ -29,7 +30,7 @@ public class tests2s : MonoBehaviour
         context.RunCallbacks();
     }
 
-    void TestCallback(Dictionary<string, object> response)
+    void TestCallback(string responseString)
     {
         Debug.Log("Callback Success!");
     }

@@ -69,7 +69,7 @@ public class BrainCloudS2S
     private DateTime _lastHeartbeat;
     private ArrayList _requestQueue = new ArrayList();
     private ArrayList _waitingForAuthRequestQueue = new ArrayList();
-    public delegate void S2SCallback(Dictionary<string, object> response);
+    public delegate void S2SCallback(string responseString);
 
     private struct S2SRequest
     {
@@ -133,7 +133,7 @@ public class BrainCloudS2S
     public void Request(string jsonRequestData, S2SCallback callback)
     {
         if (!Authenticated && _packetId == 0) //this is an authentication request no matter what
-        {         
+        {
             Authenticate(OnAuthenticationCallback);
         }
         if(!Authenticated) // these are the requests that have been made that are awaiting authentication. We NEED to store the request so we can properly call this function back for additional requests that are made after authenitcation.
@@ -328,6 +328,13 @@ public class BrainCloudS2S
             {
                 response = activeRequest.request.downloadHandler.text;
             }
+            if(!string.IsNullOrEmpty(activeRequest.request.error))
+            {
+                LogString("S2S Failed: " + activeRequest.request.error);
+                activeRequest.callback(activeRequest.request.error);
+                activeRequest.request.Abort();
+                _requestQueue.RemoveAt(0);
+            }
 #endif
             if (response != null)
             {
@@ -354,7 +361,7 @@ public class BrainCloudS2S
                         //callback
                         if (activeRequest.callback != null)
                         {
-                            activeRequest.callback((Dictionary<string, object>)messageResponses);
+                            activeRequest.callback(JsonWriter.Serialize((Dictionary<string, object>)messageResponses));
                         }
 
                         //remove the request
@@ -379,7 +386,7 @@ public class BrainCloudS2S
                         //callback
                         if (activeRequest.callback != null)
                         {
-                            activeRequest.callback((Dictionary<string, object>)messageResponses);
+                            activeRequest.callback(JsonWriter.Serialize((Dictionary<string, object>)messageResponses));
                         }
 
                         activeRequest.request.Abort();
@@ -412,8 +419,18 @@ public class BrainCloudS2S
         SessionId = null;
     }
 
-    public void OnAuthenticationCallback(Dictionary<string, object> response)
+    public void OnAuthenticationCallback(string responseString)
     {
+        Dictionary<string, object> response = null;
+        try
+        {
+            response = (Dictionary<string, object>)JsonReader.Deserialize(responseString);
+        }
+        catch
+        {
+            return;
+        }
+
         if (response != null)
         {
             ////check if its a failure
@@ -443,8 +460,9 @@ public class BrainCloudS2S
         }
     }
 
-    public void OnHeartbeatCallback(Dictionary<string, object> response)
+    public void OnHeartbeatCallback(string responseString)
     {
+        Dictionary<string, object> response = (Dictionary<string, object>)JsonReader.Deserialize(responseString);
         if (response != null)
         {
             if (response.ContainsKey("status"))
