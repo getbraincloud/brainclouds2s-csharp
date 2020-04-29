@@ -26,12 +26,12 @@ ex. update()
     }
       
 ## step 5
-If you want to make your own S2SCallback to retrieve data, make a static function that takes a Dictionary<string, object> as the parameter.
+If you want to make your own S2SCallback to retrieve data, make a static function that takes a string as the parameter.
 
 ex. 
-  ```static void testCallback(Dictionary<string, object> response){}```
+  ```static void testCallback(string response){}```
 
-## writing a request
+## Writing a request
 You can either send the request as a json string, or a Dictionary<string,object>
   
 string example:
