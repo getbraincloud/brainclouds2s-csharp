@@ -70,6 +70,7 @@ public class BrainCloudS2S
     private ArrayList _requestQueue = new ArrayList();
     private ArrayList _waitingForAuthRequestQueue = new ArrayList();
     public delegate void S2SCallback(string responseString);
+    S2SRequest activeRequest;
 
     private struct S2SRequest
     {
@@ -233,8 +234,6 @@ public class BrainCloudS2S
     {
         string packet = CreatePacket(dataPacket);                   //create data packet of the data with packetId info
 
-        LogString("Sending Request: " + packet);
-
         byte[] byteArray = Encoding.UTF8.GetBytes(packet);          //convert data packet to byte[]
 
         Stream requestStream = request.GetRequestStream();          //gets a stream to send dataPacket for request
@@ -304,23 +303,26 @@ public class BrainCloudS2S
     public void RunCallbacks()
     {
         if (_requestQueue.Count != 0)
-        {
-            //make first request in queue the active request
-            S2SRequest activeRequest = (S2SRequest)_requestQueue[0];
+        {  
+            if (activeRequest.request == null) //if there is no request already active, move onto the next request in the queue. 
+            {
+                //make first request in queue the active request
+                activeRequest = (S2SRequest)_requestQueue[0];
 #if DOT_NET
-            HttpWebResponse response = null;
+                HttpWebResponse response = null;
 
-            try
-            {
-                response = (HttpWebResponse)activeRequest.request.GetResponse();
-            }
-            catch (Exception e)
-            {
-                LogString("S2S Failed: " + e.ToString());
-                activeRequest.request.Abort();
-                _requestQueue.RemoveAt(0);
-                return;
-            }
+                try
+                {
+                    LogString("Sending Request: " + activeRequest.requestData);
+                    response = (HttpWebResponse)activeRequest.request.GetResponse();
+                }
+                catch (Exception e)
+                {
+                    LogString("S2S Failed: " + e.ToString());
+                    activeRequest.request.Abort();
+                    _requestQueue.RemoveAt(0);
+                    return;
+                }
 #endif
 #if USE_WEB_REQUEST
             string response = null;
@@ -336,64 +338,67 @@ public class BrainCloudS2S
                 _requestQueue.RemoveAt(0);
             }
 #endif
-            if (response != null)
-            {
+                if (response != null)
+                {
 #if DOT_NET
-                //get the response body
-                string responseString = ReadResponseBody(response);
+                    //get the response body
+                    string responseString = ReadResponseBody(response);
 #endif
 #if USE_WEB_REQUEST
                 //get the response body
                 string responseString = response;
 #endif
-                Dictionary<string, object> responseBody = (Dictionary<string, object>)JsonReader.Deserialize(responseString);
+                    Dictionary<string, object> responseBody = (Dictionary<string, object>)JsonReader.Deserialize(responseString);
 
-                if (responseBody.ContainsKey("messageResponses"))
-                {
-                    //extract the map array
-                    Dictionary<string, object>[] messageArray = (Dictionary<string, object>[])responseBody["messageResponses"];
-                    //extract the map from the map array
-                    Dictionary<string, object> messageResponses = (Dictionary<string, object>)messageArray.GetValue(0);
-                    if ((int)messageResponses["status"] == 200) //success 200
+                    if (responseBody.ContainsKey("messageResponses"))
                     {
-                        LogString("S2S Response: " + responseString);
-
-                        //callback
-                        if (activeRequest.callback != null)
+                        //extract the map array
+                        Dictionary<string, object>[] messageArray = (Dictionary<string, object>[])responseBody["messageResponses"];
+                        //extract the map from the map array
+                        Dictionary<string, object> messageResponses = (Dictionary<string, object>)messageArray.GetValue(0);
+                        if ((int)messageResponses["status"] == 200) //success 200
                         {
-                            activeRequest.callback(JsonWriter.Serialize((Dictionary<string, object>)messageResponses));
-                        }
+                            LogString("S2S Response: " + responseString);
 
-                        //remove the request
-                        _requestQueue.RemoveAt(0);
-                    }
-                    else //failed
-                    {
-                        //check if its a session expiry
-                        if (responseBody.ContainsKey("reason_code"))
-                        {
-                            if ((int)responseBody["reason_code"] == SERVER_SESSION_EXPIRED)
+                            //callback
+                            if (activeRequest.callback != null)
                             {
-                                LogString("S2S session expired");
-                                activeRequest.request.Abort();
-                                Disconnect();
-                                return;
+                                activeRequest.callback(JsonWriter.Serialize((Dictionary<string, object>)messageResponses));
                             }
+
+                            //remove the request
+                            _requestQueue.RemoveAt(0);
                         }
-
-                        LogString("S2S Failed: " + responseString);
-
-                        //callback
-                        if (activeRequest.callback != null)
+                        else //failed
                         {
-                            activeRequest.callback(JsonWriter.Serialize((Dictionary<string, object>)messageResponses));
+                            //check if its a session expiry
+                            if (responseBody.ContainsKey("reason_code"))
+                            {
+                                if ((int)responseBody["reason_code"] == SERVER_SESSION_EXPIRED)
+                                {
+                                    LogString("S2S session expired");
+                                    activeRequest.request.Abort();
+                                    Disconnect();
+                                    return;
+                                }
+                            }
+
+                            LogString("S2S Failed: " + responseString);
+
+                            //callback
+                            if (activeRequest.callback != null)
+                            {
+                                activeRequest.callback(JsonWriter.Serialize((Dictionary<string, object>)messageResponses));
+                            }
+
+                            activeRequest.request.Abort();
+
+                            //remove the request
+                            _requestQueue.RemoveAt(0);
                         }
-
-                        activeRequest.request.Abort();
-
-                        //remove the request
-                        _requestQueue.RemoveAt(0);
                     }
+
+                    activeRequest.request = null; //reset the active request so that it can move onto the next request. 
                 }
             }
         }
