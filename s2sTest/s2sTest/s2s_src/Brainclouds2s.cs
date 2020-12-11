@@ -309,12 +309,12 @@ public class BrainCloudS2S
                 //make first request in queue the active request
                 activeRequest = (S2SRequest)_requestQueue[0];
 #if DOT_NET
-                HttpWebResponse response = null;
+                HttpWebResponse csharpResponse = null;
 
                 try
                 {
                     LogString("Sending Request: " + activeRequest.requestData);
-                    response = (HttpWebResponse)activeRequest.request.GetResponse();
+                    csharpResponse = (HttpWebResponse)activeRequest.request.GetResponse();
                 }
                 catch (Exception e)
                 {
@@ -325,10 +325,10 @@ public class BrainCloudS2S
                 }
 #endif
 #if USE_WEB_REQUEST
-            string response = null;
+            string unityResponse = null;
             if(activeRequest.request.downloadHandler.isDone)
             {
-                response = activeRequest.request.downloadHandler.text;
+                unityResponse = activeRequest.request.downloadHandler.text;
             }
             if(!string.IsNullOrEmpty(activeRequest.request.error))
             {
@@ -338,15 +338,18 @@ public class BrainCloudS2S
                 _requestQueue.RemoveAt(0);
             }
 #endif
-                if (response != null)
-                {
+
 #if DOT_NET
+                if (csharpResponse != null)
+                {
                     //get the response body
-                    string responseString = ReadResponseBody(response);
+                    string responseString = ReadResponseBody(csharpResponse);
 #endif
 #if USE_WEB_REQUEST
+                if (unityResponse != null)
+                {
                 //get the response body
-                string responseString = response;
+                string responseString = unityResponse;
 #endif
                     Dictionary<string, object> responseBody = (Dictionary<string, object>)JsonReader.Deserialize(responseString);
 
