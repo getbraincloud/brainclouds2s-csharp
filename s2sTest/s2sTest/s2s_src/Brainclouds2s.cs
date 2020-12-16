@@ -114,6 +114,7 @@ public class BrainCloudS2S
         ServerSecret = serverSecret;
         ServerName = serverName;
         SessionId = null;
+        activeRequest.request = null;
         _heartbeatTimer = TimeSpan.FromSeconds(_heartbeatSeconds);
     }
 
@@ -137,7 +138,7 @@ public class BrainCloudS2S
         {
             Authenticate(OnAuthenticationCallback);
         }
-        if(!Authenticated) // these are the requests that have been made that are awaiting authentication. We NEED to store the request so we can properly call this function back for additional requests that are made after authenitcation.
+        if (!Authenticated) // these are the requests that have been made that are awaiting authentication. We NEED to store the request so we can properly call this function back for additional requests that are made after authenitcation.
         {
             S2SRequest nonAuthRequest = new S2SRequest();
             nonAuthRequest.requestData = jsonRequestData;
@@ -247,7 +248,7 @@ public class BrainCloudS2S
     {
         string packet = CreatePacket(dataPacket);                   //create data packet of the data with packetId info
 
-        LogString("Sending Request: " + packet);
+        //LogString("Sending Request: " + packet);
 
         byte[] byteArray = Encoding.UTF8.GetBytes(packet);          //convert data packet to byte[]
         request.uploadHandler = new UploadHandlerRaw(byteArray);    //prepare data
@@ -302,32 +303,37 @@ public class BrainCloudS2S
 
     public void RunCallbacks()
     {
-        if (_requestQueue.Count != 0)
-        {  
-            if (activeRequest.request == null) //if there is no request already active, move onto the next request in the queue. 
+        if (activeRequest.request == null) //if there is no active request, make the first in the queue the active request.
+        {
+            if (_requestQueue.Count != 0) //make sure the queue isn't empty
             {
-                //make first request in queue the active request
                 activeRequest = (S2SRequest)_requestQueue[0];
+            }
+        }
+        else //on an update, if we have an active request we need to process it. This is vital for WEB_REQUEST becasue it handles requests differently than DOT_NET
+        {
 #if DOT_NET
-                HttpWebResponse csharpResponse = null;
+            HttpWebResponse csharpResponse = null;
 
-                try
-                {
-                    LogString("Sending Request: " + activeRequest.requestData);
-                    csharpResponse = (HttpWebResponse)activeRequest.request.GetResponse();
-                }
-                catch (Exception e)
-                {
-                    LogString("S2S Failed: " + e.ToString());
-                    activeRequest.request.Abort();
-                    _requestQueue.RemoveAt(0);
-                    return;
-                }
+            try
+            {
+                LogString("Sending Request: " + activeRequest.requestData);
+                csharpResponse = (HttpWebResponse)activeRequest.request.GetResponse();
+            }
+            catch (Exception e)
+            {
+                LogString("S2S Failed: " + e.ToString());
+                activeRequest.request.Abort();
+                activeRequest.request = null;
+                _requestQueue.RemoveAt(0);
+                return;
+            }
 #endif
 #if USE_WEB_REQUEST
             string unityResponse = null;
             if(activeRequest.request.downloadHandler.isDone)
             {
+                LogString("Sending Request: " + activeRequest.request);
                 unityResponse = activeRequest.request.downloadHandler.text;
             }
             if(!string.IsNullOrEmpty(activeRequest.request.error))
@@ -335,77 +341,75 @@ public class BrainCloudS2S
                 LogString("S2S Failed: " + activeRequest.request.error);
                 activeRequest.callback(activeRequest.request.error);
                 activeRequest.request.Abort();
+                activeRequest.request = null;
                 _requestQueue.RemoveAt(0);
             }
 #endif
 
 #if DOT_NET
-                if (csharpResponse != null)
-                {
-                    //get the response body
-                    string responseString = ReadResponseBody(csharpResponse);
+            if (csharpResponse != null)
+            {
+                //get the response body
+                string responseString = ReadResponseBody(csharpResponse);
 #endif
 #if USE_WEB_REQUEST
-                if (unityResponse != null)
-                {
-                //get the response body
-                string responseString = unityResponse;
+            if (unityResponse != null)
+            {
+            //get the response body
+            string responseString = unityResponse;
 #endif
-                    Dictionary<string, object> responseBody = (Dictionary<string, object>)JsonReader.Deserialize(responseString);
+                Dictionary<string, object> responseBody = (Dictionary<string, object>)JsonReader.Deserialize(responseString);
 
-                    if (responseBody.ContainsKey("messageResponses"))
+                if (responseBody.ContainsKey("messageResponses"))
+                {
+                    //extract the map array
+                    Dictionary<string, object>[] messageArray = (Dictionary<string, object>[])responseBody["messageResponses"];
+                    //extract the map from the map array
+                    Dictionary<string, object> messageResponses = (Dictionary<string, object>)messageArray.GetValue(0);
+                    if ((int)messageResponses["status"] == 200) //success 200
                     {
-                        //extract the map array
-                        Dictionary<string, object>[] messageArray = (Dictionary<string, object>[])responseBody["messageResponses"];
-                        //extract the map from the map array
-                        Dictionary<string, object> messageResponses = (Dictionary<string, object>)messageArray.GetValue(0);
-                        if ((int)messageResponses["status"] == 200) //success 200
+                        LogString("S2S Response: " + responseString);
+
+                        //callback
+                        if (activeRequest.callback != null)
                         {
-                            LogString("S2S Response: " + responseString);
-
-                            //callback
-                            if (activeRequest.callback != null)
-                            {
-                                activeRequest.callback(JsonWriter.Serialize((Dictionary<string, object>)messageResponses));
-                            }
-
-                            //remove the request
-                            _requestQueue.RemoveAt(0);
+                            activeRequest.callback(JsonWriter.Serialize((Dictionary<string, object>)messageResponses));
                         }
-                        else //failed
-                        {
-                            //check if its a session expiry
-                            if (responseBody.ContainsKey("reason_code"))
-                            {
-                                if ((int)responseBody["reason_code"] == SERVER_SESSION_EXPIRED)
-                                {
-                                    LogString("S2S session expired");
-                                    activeRequest.request.Abort();
-                                    Disconnect();
-                                    return;
-                                }
-                            }
 
-                            LogString("S2S Failed: " + responseString);
-
-                            //callback
-                            if (activeRequest.callback != null)
-                            {
-                                activeRequest.callback(JsonWriter.Serialize((Dictionary<string, object>)messageResponses));
-                            }
-
-                            activeRequest.request.Abort();
-
-                            //remove the request
-                            _requestQueue.RemoveAt(0);
-                        }
+                        //remove the request finished request form the queue
+                        _requestQueue.RemoveAt(0);
                     }
+                    else //failed
+                    {
+                        //check if its a session expiry
+                        if (responseBody.ContainsKey("reason_code"))
+                        {
+                            if ((int)responseBody["reason_code"] == SERVER_SESSION_EXPIRED)
+                            {
+                                LogString("S2S session expired");
+                                activeRequest.request.Abort();
+                                Disconnect();
+                                return;
+                            }
+                        }
 
-                    activeRequest.request = null; //reset the active request so that it can move onto the next request. 
+                        LogString("S2S Failed: " + responseString);
+
+                        //callback
+                        if (activeRequest.callback != null)
+                        {
+                            activeRequest.callback(JsonWriter.Serialize((Dictionary<string, object>)messageResponses));
+                        }
+
+                        activeRequest.request.Abort();
+
+                        //remove the finished request from the queue
+                        _requestQueue.RemoveAt(0);
+                    }
                 }
+                activeRequest.request = null; //reset the active request so that it can move onto the next request. 
             }
         }
-
         //do a heartbeat if necessary.
         if (Authenticated)
         {
@@ -450,7 +454,7 @@ public class BrainCloudS2S
                     SessionId = (string)data["sessionId"];
                     if (data.ContainsKey("heartbeatSeconds"))
                     {
-                        _heartbeatSeconds = (int)data["heartbeatSeconds"];
+                        _heartbeatSeconds = (int)data["heartbeatSeconds"]; // get the heartbeat seconds from braincloud.
                     }
 
                     ResetHeartbeat();

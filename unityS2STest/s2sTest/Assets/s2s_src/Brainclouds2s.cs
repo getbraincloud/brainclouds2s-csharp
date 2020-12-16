@@ -70,6 +70,7 @@ public class BrainCloudS2S
     private ArrayList _requestQueue = new ArrayList();
     private ArrayList _waitingForAuthRequestQueue = new ArrayList();
     public delegate void S2SCallback(string responseString);
+    S2SRequest activeRequest;
 
     private struct S2SRequest
     {
@@ -113,6 +114,7 @@ public class BrainCloudS2S
         ServerSecret = serverSecret;
         ServerName = serverName;
         SessionId = null;
+        activeRequest.request = null;
         _heartbeatTimer = TimeSpan.FromSeconds(_heartbeatSeconds);
     }
 
@@ -136,7 +138,7 @@ public class BrainCloudS2S
         {
             Authenticate(OnAuthenticationCallback);
         }
-        if(!Authenticated) // these are the requests that have been made that are awaiting authentication. We NEED to store the request so we can properly call this function back for additional requests that are made after authenitcation.
+        if (!Authenticated) // these are the requests that have been made that are awaiting authentication. We NEED to store the request so we can properly call this function back for additional requests that are made after authenitcation.
         {
             S2SRequest nonAuthRequest = new S2SRequest();
             nonAuthRequest.requestData = jsonRequestData;
@@ -233,8 +235,6 @@ public class BrainCloudS2S
     {
         string packet = CreatePacket(dataPacket);                   //create data packet of the data with packetId info
 
-        LogString("Sending Request: " + packet);
-
         byte[] byteArray = Encoding.UTF8.GetBytes(packet);          //convert data packet to byte[]
 
         Stream requestStream = request.GetRequestStream();          //gets a stream to send dataPacket for request
@@ -248,7 +248,7 @@ public class BrainCloudS2S
     {
         string packet = CreatePacket(dataPacket);                   //create data packet of the data with packetId info
 
-        LogString("Sending Request: " + packet);
+        //LogString("Sending Request: " + packet);
 
         byte[] byteArray = Encoding.UTF8.GetBytes(packet);          //convert data packet to byte[]
         request.uploadHandler = new UploadHandlerRaw(byteArray);    //prepare data
@@ -303,48 +303,60 @@ public class BrainCloudS2S
 
     public void RunCallbacks()
     {
-        if (_requestQueue.Count != 0)
+        if (activeRequest.request == null) //if there is no active request, make the first in the queue the active request.
         {
-            //make first request in queue the active request
-            S2SRequest activeRequest = (S2SRequest)_requestQueue[0];
+            if (_requestQueue.Count != 0) //make sure the queue isn't empty
+            {
+                activeRequest = (S2SRequest)_requestQueue[0];
+            }
+        }
+        else //on an update, if we have an active request we need to process it. This is vital for WEB_REQUEST becasue it handles requests differently than DOT_NET
+        {
 #if DOT_NET
-            HttpWebResponse response = null;
+            HttpWebResponse csharpResponse = null;
 
             try
             {
-                response = (HttpWebResponse)activeRequest.request.GetResponse();
+                LogString("Sending Request: " + activeRequest.requestData);
+                csharpResponse = (HttpWebResponse)activeRequest.request.GetResponse();
             }
             catch (Exception e)
             {
                 LogString("S2S Failed: " + e.ToString());
                 activeRequest.request.Abort();
+                activeRequest.request = null;
                 _requestQueue.RemoveAt(0);
                 return;
             }
 #endif
 #if USE_WEB_REQUEST
-            string response = null;
+            string unityResponse = null;
             if(activeRequest.request.downloadHandler.isDone)
             {
-                response = activeRequest.request.downloadHandler.text;
+                LogString("Sending Request: " + activeRequest.request);
+                unityResponse = activeRequest.request.downloadHandler.text;
             }
             if(!string.IsNullOrEmpty(activeRequest.request.error))
             {
                 LogString("S2S Failed: " + activeRequest.request.error);
                 activeRequest.callback(activeRequest.request.error);
                 activeRequest.request.Abort();
+                activeRequest.request = null;
                 _requestQueue.RemoveAt(0);
             }
 #endif
-            if (response != null)
-            {
+
 #if DOT_NET
+            if (csharpResponse != null)
+            {
                 //get the response body
-                string responseString = ReadResponseBody(response);
+                string responseString = ReadResponseBody(csharpResponse);
 #endif
 #if USE_WEB_REQUEST
-                //get the response body
-                string responseString = response;
+            if (unityResponse != null)
+            {
+            //get the response body
+            string responseString = unityResponse;
 #endif
                 Dictionary<string, object> responseBody = (Dictionary<string, object>)JsonReader.Deserialize(responseString);
 
@@ -364,7 +376,7 @@ public class BrainCloudS2S
                             activeRequest.callback(JsonWriter.Serialize((Dictionary<string, object>)messageResponses));
                         }
 
-                        //remove the request
+                        //remove the request finished request form the queue
                         _requestQueue.RemoveAt(0);
                     }
                     else //failed
@@ -391,13 +403,13 @@ public class BrainCloudS2S
 
                         activeRequest.request.Abort();
 
-                        //remove the request
+                        //remove the finished request from the queue
                         _requestQueue.RemoveAt(0);
                     }
                 }
+                activeRequest.request = null; //reset the active request so that it can move onto the next request. 
             }
         }
-
         //do a heartbeat if necessary.
         if (Authenticated)
         {
@@ -442,7 +454,7 @@ public class BrainCloudS2S
                     SessionId = (string)data["sessionId"];
                     if (data.ContainsKey("heartbeatSeconds"))
                     {
-                        _heartbeatSeconds = (int)data["heartbeatSeconds"];
+                        _heartbeatSeconds = (int)data["heartbeatSeconds"]; // get the heartbeat seconds from braincloud.
                     }
 
                     ResetHeartbeat();
