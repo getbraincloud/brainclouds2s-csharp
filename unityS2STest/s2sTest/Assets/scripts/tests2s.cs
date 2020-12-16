@@ -9,19 +9,13 @@ public class tests2s : MonoBehaviour
     void Start()
     {
         context = new BrainCloudS2S();
-        context.Init("20001", "TestServer", "2ddf8355-c516-48dd-a6b0-e35bd75fac80", "https://internal.braincloudservers.com/s2sdispatcher");
+        context.Init("", "TestServer", "", "https://internal.braincloudservers.com/s2sdispatcher");
         //context.Init("", "", "");
         context.LoggingEnabled = true;
 
         //SEND AS DICTIONARY
-        Dictionary<string, object> request = new Dictionary<string, object>();
-        request.Add("service", "lobby");
-        request.Add("operation", "GET_LOBBY_DATA");
-        Dictionary<string, object> data = new Dictionary<string, object>();
-        data.Add("lobbyId", "8395474985"); //fail
-        //data.Add("context", "test");
-        request.Add("data", data);
-        context.Request(request, TestCallback);
+        context.Request("{\"service\":\"time\",\"operation\":\"READ\"}", testCallback);
+        context.Request("{\"service\":\"time\",\"operation\":\"READ\"}", testCallback);
     }
 
     // Update is called once per frame
@@ -30,7 +24,7 @@ public class tests2s : MonoBehaviour
         context.RunCallbacks();
     }
 
-    void TestCallback(string responseString)
+    void testCallback(string responseString)
     {
         Debug.Log("Callback Success!");
     }
