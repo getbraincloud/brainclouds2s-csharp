@@ -1,0 +1,1 @@
+Run the unity scene, then check the console logs to watch the tests progress.
