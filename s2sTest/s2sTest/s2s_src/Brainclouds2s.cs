@@ -59,17 +59,24 @@ public class BrainCloudS2S
     {
         get; set;
     }
-    public bool Authenticated
+
+    public enum State
     {
-        get; private set;
+        Authenticated,
+        Authenticating,
+        Disconnected
     }
+
     private long _packetId = 0;
     private long _heartbeatSeconds = 1800; //Default to 30 mins  
+    private State _state = State.Disconnected;
+    private bool _autoAuth = false;
     private TimeSpan _heartbeatTimer;
     private DateTime _lastHeartbeat;
     private ArrayList _requestQueue = new ArrayList();
     private ArrayList _waitingForAuthRequestQueue = new ArrayList();
     public delegate void S2SCallback(string responseString);
+    S2SRequest activeRequest;
 
     private struct S2SRequest
     {
@@ -89,10 +96,11 @@ public class BrainCloudS2S
         * @param appId Application ID
         * @param serverName Server name
         * @param serverSecret Server secret key
+        * @param autoAuth automatic authentication with braincloud
         */
-    public void Init(string appId, string serverName, string serverSecret)
+    public void Init(string appId, string serverName, string serverSecret, bool autoAuth)
     {
-        Init(appId, serverName, serverSecret, DEFAULT_S2S_URL);
+        Init(appId, serverName, serverSecret, autoAuth, DEFAULT_S2S_URL);
     }
 
     /**
@@ -104,7 +112,7 @@ public class BrainCloudS2S
     * @param serverUrl The server URL to send the request to. Defaults to the
     * default brainCloud portal
     */
-    public void Init(string appId, string serverName, string serverSecret, string serverUrl)
+    public void Init(string appId, string serverName, string serverSecret, bool autoAuth, string serverUrl)
     {
         _packetId = 0;
         IsInitialized = true;
@@ -112,7 +120,9 @@ public class BrainCloudS2S
         AppId = appId;
         ServerSecret = serverSecret;
         ServerName = serverName;
+        _autoAuth = autoAuth;
         SessionId = null;
+        activeRequest.request = null;
         _heartbeatTimer = TimeSpan.FromSeconds(_heartbeatSeconds);
     }
 
@@ -132,11 +142,14 @@ public class BrainCloudS2S
     */
     public void Request(string jsonRequestData, S2SCallback callback)
     {
-        if (!Authenticated && _packetId == 0) //this is an authentication request no matter what
+        if (_autoAuth == true)
         {
-            Authenticate(OnAuthenticationCallback);
+            if (!(_state == State.Authenticated) && _packetId == 0) //this is an authentication request no matter what
+            {
+                Authenticate(OnAuthenticationCallback);
+            }
         }
-        if(!Authenticated) // these are the requests that have been made that are awaiting authentication. We NEED to store the request so we can properly call this function back for additional requests that are made after authenitcation.
+        if (!(_state == State.Authenticated)) // these are the requests that have been made that are awaiting authentication. We NEED to store the request so we can properly call this function back for additional requests that are made after authenitcation.
         {
             S2SRequest nonAuthRequest = new S2SRequest();
             nonAuthRequest.requestData = jsonRequestData;
@@ -146,7 +159,7 @@ public class BrainCloudS2S
         }
         else
         {
-            FormRequest(jsonRequestData, callback);
+            QueueRequest(jsonRequestData, callback);
         }
     }
 
@@ -159,11 +172,14 @@ public class BrainCloudS2S
     public void Request(Dictionary<string, object> jsonRequestData, S2SCallback callback)
     {
         string jsonRequestDataString = JsonWriter.Serialize(jsonRequestData);
-        if (!Authenticated && _packetId == 0) //this is an authentication request no matter what
+        if (_autoAuth == true)
         {
-            Authenticate(OnAuthenticationCallback);
+            if (!(_state == State.Authenticated) && _packetId == 0) //this is an authentication request no matter what
+            {
+                Authenticate(OnAuthenticationCallback);
+            }
         }
-        if (!Authenticated) // these are the requests that have been made that are awaiting authentication. We NEED to store the request so we can properly call this function back for additional requests that are made after authenitcation.
+        if (!(_state == State.Authenticated)) // these are the requests that have been made that are awaiting authentication. We NEED to store the request so we can properly call this function back for additional requests that are made after authenitcation.
         {
             S2SRequest nonAuthRequest = new S2SRequest();
             nonAuthRequest.requestData = jsonRequestDataString;
@@ -173,11 +189,11 @@ public class BrainCloudS2S
         }
         else
         {
-            FormRequest(jsonRequestDataString, callback);
+            QueueRequest(jsonRequestDataString, callback);
         }
     }
 
-    private void FormRequest(string jsonRequestData, S2SCallback callback)
+    private void QueueRequest(string jsonRequestData, S2SCallback callback)
     {
 #if DOT_NET
         //create new request
@@ -233,8 +249,6 @@ public class BrainCloudS2S
     {
         string packet = CreatePacket(dataPacket);                   //create data packet of the data with packetId info
 
-        LogString("Sending Request: " + packet);
-
         byte[] byteArray = Encoding.UTF8.GetBytes(packet);          //convert data packet to byte[]
 
         Stream requestStream = request.GetRequestStream();          //gets a stream to send dataPacket for request
@@ -248,7 +262,7 @@ public class BrainCloudS2S
     {
         string packet = CreatePacket(dataPacket);                   //create data packet of the data with packetId info
 
-        LogString("Sending Request: " + packet);
+        //LogString("Sending Request: " + packet);
 
         byte[] byteArray = Encoding.UTF8.GetBytes(packet);          //convert data packet to byte[]
         request.uploadHandler = new UploadHandlerRaw(byteArray);    //prepare data
@@ -265,9 +279,10 @@ public class BrainCloudS2S
 
     public void Authenticate(S2SCallback callback)
     {
+        _state = State.Authenticating;
         string jsonAuthString = "{\"service\":\"authenticationV2\",\"operation\":\"AUTHENTICATE\",\"data\":{\"appId\":\"" + AppId + "\",\"serverName\":\"" + ServerName + "\",\"serverSecret\":\"" + ServerSecret + "\"}}";
         _packetId = 0;
-        FormRequest(jsonAuthString, callback);
+        QueueRequest(jsonAuthString, callback + OnAuthenticationCallback); //We need to call OnAuthenticate callback to refill the queue with requests waiting on an auth request, and handle heartbeat and sessionId data. 
     }
 
     public void SendHeartbeat(S2SCallback callback)
@@ -275,7 +290,7 @@ public class BrainCloudS2S
         if (SessionId != null)
         {
             string jsonHeartbeatString = "{\"service\":\"heartbeat\",\"operation\":\"HEARTBEAT\"}";
-            FormRequest(jsonHeartbeatString, callback);
+            QueueRequest(jsonHeartbeatString, callback);
         }
     }
 
@@ -303,48 +318,61 @@ public class BrainCloudS2S
 
     public void RunCallbacks()
     {
-        if (_requestQueue.Count != 0)
+        if (activeRequest.request == null) //if there is no active request, make the first in the queue the active request.
         {
-            //make first request in queue the active request
-            S2SRequest activeRequest = (S2SRequest)_requestQueue[0];
+            if (_requestQueue.Count != 0) //make sure the queue isn't empty
+            {
+                activeRequest = (S2SRequest)_requestQueue[0];
+            }
+        }
+        else //on an update, if we have an active request we need to process it. This is VITAL for WEB_REQUEST becasue it handles requests differently than DOT_NET
+        {
+
 #if DOT_NET
-            HttpWebResponse response = null;
+            HttpWebResponse csharpResponse = null;
 
             try
             {
-                response = (HttpWebResponse)activeRequest.request.GetResponse();
+                LogString("Sending Request: " + activeRequest.requestData);
+                csharpResponse = (HttpWebResponse)activeRequest.request.GetResponse();
             }
             catch (Exception e)
             {
                 LogString("S2S Failed: " + e.ToString());
                 activeRequest.request.Abort();
+                activeRequest.request = null;
                 _requestQueue.RemoveAt(0);
                 return;
             }
 #endif
 #if USE_WEB_REQUEST
-            string response = null;
+            string unityResponse = null;
             if(activeRequest.request.downloadHandler.isDone)
             {
-                response = activeRequest.request.downloadHandler.text;
+                LogString("Sending Request: " + activeRequest.request);
+                unityResponse = activeRequest.request.downloadHandler.text;
             }
             if(!string.IsNullOrEmpty(activeRequest.request.error))
             {
                 LogString("S2S Failed: " + activeRequest.request.error);
                 activeRequest.callback(activeRequest.request.error);
                 activeRequest.request.Abort();
+                activeRequest.request = null;
                 _requestQueue.RemoveAt(0);
             }
 #endif
-            if (response != null)
-            {
+
 #if DOT_NET
+            if (csharpResponse != null)
+            {
                 //get the response body
-                string responseString = ReadResponseBody(response);
+                string responseString = ReadResponseBody(csharpResponse);
 #endif
 #if USE_WEB_REQUEST
-                //get the response body
-                string responseString = response;
+            if (unityResponse != null)
+            {
+            //get the response body
+            string responseString = unityResponse;
 #endif
                 Dictionary<string, object> responseBody = (Dictionary<string, object>)JsonReader.Deserialize(responseString);
 
@@ -364,7 +392,7 @@ public class BrainCloudS2S
                             activeRequest.callback(JsonWriter.Serialize((Dictionary<string, object>)messageResponses));
                         }
 
-                        //remove the request
+                        //remove the request finished request form the queue
                         _requestQueue.RemoveAt(0);
                     }
                     else //failed
@@ -391,15 +419,15 @@ public class BrainCloudS2S
 
                         activeRequest.request.Abort();
 
-                        //remove the request
+                        //remove the finished request from the queue
                         _requestQueue.RemoveAt(0);
                     }
                 }
+                activeRequest.request = null; //reset the active request so that it can move onto the next request. 
             }
         }
-
         //do a heartbeat if necessary.
-        if (Authenticated)
+        if (_state == State.Authenticated)
         {
             if (DateTime.Now.Subtract(_lastHeartbeat) >= _heartbeatTimer)
             {
@@ -415,8 +443,9 @@ public class BrainCloudS2S
     */
     public void Disconnect()
     {
-        Authenticated = false;
+        _state = State.Disconnected;
         SessionId = null;
+        _packetId = 0;
     }
 
     public void OnAuthenticationCallback(string responseString)
@@ -442,11 +471,11 @@ public class BrainCloudS2S
                     SessionId = (string)data["sessionId"];
                     if (data.ContainsKey("heartbeatSeconds"))
                     {
-                        _heartbeatSeconds = (int)data["heartbeatSeconds"];
+                        _heartbeatSeconds = (int)data["heartbeatSeconds"]; // get the heartbeat seconds from braincloud.
                     }
 
                     ResetHeartbeat();
-                    Authenticated = true;
+                    _state = State.Authenticated;
 
                     for (int i = 0; i < _waitingForAuthRequestQueue.Count; i++)
                     {
