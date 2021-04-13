@@ -1,7 +1,13 @@
-﻿using System;
+﻿// [dsl] This needs to be rewritten.
+// I had to hack it so it fails on the first fail. and also exit on success so it
+// doesn't get stuck in infinite loop
+
+using System;
 using System.Collections;
 using BrainCloud.JsonFx.Json;
 using System.Collections.Generic;
+using System.Threading;
+using System.Diagnostics;
 
 namespace s2sTest
 {
@@ -9,50 +15,109 @@ namespace s2sTest
     {
         static void Main(string[] args)
         {
+            string currentTestName = "";
             int successCounter = 0;
             Int64 lastServerTime = 0;
             BrainCloudS2S context = new BrainCloudS2S();
             context.Init("20001", "TestServer", "2ddf8355-c516-48dd-a6b0-e35bd75fac80", false, "https://internal.braincloudservers.com/s2sdispatcher");
             context.LoggingEnabled = true;
+            Stopwatch stopwatch = new Stopwatch();
+
+
+            void startTest(string testName)
+            {
+                currentTestName = testName;
+                Console.WriteLine("\n-----" + currentTestName + " START-----");
+
+                stopwatch.Restart();
+            }
+
 
             //Begin Tests
             //Test 1 - Test Auth
-            Console.WriteLine("\n-----Test1 Authentication START-----");
+            stopwatch.Start();
+            startTest("TestAuthentication");
             context.Authenticate(onTestAuthenticationCallback);
 
 
+            // Infinite loop, check for timeouts
             while (true)
             {
+                if (stopwatch.ElapsedMilliseconds > 20000) // 20 sec. If a call takes more than that, something is clearly wrong and should fail
+                {
+                    testFail("Timedout");
+                }
+
                 context.RunCallbacks();
+                Thread.Sleep(16); // 60 fps
+            }
+
+
+            void testFail(string message)
+            {
+                Console.WriteLine("\nTESTS FAIL - " + currentTestName + " - " + message);
+                Environment.Exit(1);
+            }
+
+            void checkIfFail(string response)
+            {
+                try
+                {
+                    var responseData = JsonReader.Deserialize<Dictionary<string, object>>(response);
+                    if ((int)responseData["status"] != 200)
+                    {
+                        testFail("status != 200");
+                    }
+                }
+                catch (Exception e)
+                {
+                    testFail(e.Message);
+                }
+            }
+
+            void checkExpectFail(string response)
+            {
+                try
+                {
+                    var responseData = JsonReader.Deserialize<Dictionary<string, object>>(response);
+                    if ((int)responseData["status"] == 200)
+                    {
+                        testFail("status == 200. Expected fail");
+                    }
+                }
+                catch (Exception e)
+                {
+                    testFail(e.Message);
+                }
             }
 
             void onTestAuthenticationCallback(string response)
             {
-                successCounter++;
-                if (successCounter == 1)
-                {
-                    Console.WriteLine("\n-----Test1 Authentication PASS-----");
-                    context.Disconnect();
-                    successCounter = 0;
+                checkIfFail(response);
 
-                    //Test 2 - Test Multiple Auth
-                    Console.WriteLine("\n-----Test2 Multi Auth START-----");
-                    context.Authenticate(onTestMultiAuthCallback);
-                    context.Authenticate(onTestMultiAuthCallback);
-                }
+                Console.WriteLine("\n----- PASS -----");
+                context.Disconnect();
+                successCounter = 0;
+
+                //Test 2 - Test Multiple Auth
+                startTest("TestMultiAuth");
+                context.Authenticate(onTestMultiAuthCallback);
+                context.Authenticate(onTestMultiAuthCallback);
             }
 
             void onTestMultiAuthCallback(string response)
             {
+                checkIfFail(response);
+
                 successCounter++;
                 if (successCounter == 2)
                 {
-                    Console.WriteLine("\n-----Test2 Multi Auth PASS-----");
+                    Console.WriteLine("\n----- PASS -----");
                     context.Disconnect();
                     successCounter = 0;
 
                     //Test 3 - Test Auth and Request
-                    Console.WriteLine("\n-----Test3 Auth and Request START-----");
+                    startTest("AuthAndRequest");
                     context.Authenticate(onAuthAndRequestCallback);
                     context.Request("{\"service\":\"time\",\"operation\":\"READ\"}", onAuthAndRequestCallback);
                 }
@@ -60,15 +125,17 @@ namespace s2sTest
 
             void onAuthAndRequestCallback(string response)
             {
+                checkIfFail(response);
+
                 successCounter++;
                 if (successCounter == 2)
                 {
-                    Console.WriteLine("\n-----Test3 Auth and Request PASS-----");
+                    Console.WriteLine("\n----- PASS -----");
                     context.Disconnect();
                     successCounter = 0;
 
                     //Test 4 - Test Empty Auth and Request
-                    Console.WriteLine("\n-----Test4 Empty Auth and Request START-----");
+                    startTest("EmptyAuthAndRequest");
                     context.Authenticate();
                     context.Request("{\"service\":\"time\",\"operation\":\"READ\"}", onEmptyAuthAndRequestCallback);
                 }
@@ -76,15 +143,17 @@ namespace s2sTest
 
             void onEmptyAuthAndRequestCallback(string response)
             {
+                checkIfFail(response);
+
                 successCounter++;
                 if (successCounter == 1)
                 {
-                    Console.WriteLine("\n-----Test4 Auth and Request PASS-----");
+                    Console.WriteLine("\n----- PASS -----");
                     context.Disconnect();
                     successCounter = 0;
 
                     //Test 5 - Test Queue
-                    Console.WriteLine("\n-----Test5 Queue START-----");
+                    startTest("TestQueue");
                     context.Authenticate();
                     context.Request("{\"service\":\"time\",\"operation\":\"READ\"}", onTestQueueCallback);
                     context.Request("{\"service\":\"time\",\"operation\":\"READ\"}", onTestQueueCallback);
@@ -94,6 +163,8 @@ namespace s2sTest
 
             void onTestQueueCallback(string response)
             {
+                checkIfFail(response);
+
                 var responseData = JsonReader.Deserialize<Dictionary<string, object>>(response);
                 Dictionary<string, object> data = (Dictionary<string, object>)responseData["data"];
                 Int64 serverTime = (Int64)data["server_time"];
@@ -106,13 +177,13 @@ namespace s2sTest
 
                 if (successCounter == 3)
                 {
-                    Console.WriteLine("\n-----Test5 Queue PASS-----");
+                    Console.WriteLine("\n----- PASS -----");
                     context.Disconnect();
                     lastServerTime = 0;
                     successCounter = 0;
 
                     //Test 6 - Test Queue with fail
-                    Console.WriteLine("\n-----Test6 Queue With Fail START-----");
+                    startTest("TestQueueWithFail");
                     context.Authenticate();
                     context.Request("{\"service\":\"time\",\"operation\":\"READ\"}", onTestQueueWithFailCallback);
                     context.Request("{\"service\":\"time\",\"operation\":\"REAAAD\"}", onTestQueueWithFailCallback);
@@ -125,6 +196,8 @@ namespace s2sTest
                 var responseData = JsonReader.Deserialize<Dictionary<string, object>>(response);
                 if (responseData.ContainsKey("data"))
                 {
+                    checkIfFail(response);
+
                     Dictionary<string, object> data = (Dictionary<string, object>)responseData["data"];
                     Int64 serverTime = (Int64)data["server_time"];
 
@@ -137,14 +210,14 @@ namespace s2sTest
 
                 if (successCounter == 2)
                 {
-                    Console.WriteLine("\n-----Test6 Queue With Fail PASS-----");
+                    Console.WriteLine("\n----- PASS -----");
                     context.Disconnect();
                     lastServerTime = 0;
                     successCounter = 0;
 
                     //Test 6 - Test Queue with fail
                     //expect 4 pass
-                    Console.WriteLine("\n-----Test7 Queue With Random Fail START-----");
+                    startTest("TestQueueWithRandomFail");
                     context.Authenticate();
                     context.Request("{\"service\":\"time\",\"operation\":\"READ\"}", onTestQueueWithRandomFailCallback);
                     context.Request("{\"service\":\"time\",\"operation\":\"REAAAD\"}", onTestQueueWithRandomFailCallback);
@@ -160,6 +233,8 @@ namespace s2sTest
                 var responseData = JsonReader.Deserialize<Dictionary<string, object>>(response);
                 if (responseData.ContainsKey("data"))
                 {
+                    checkIfFail(response);
+
                     Dictionary<string, object> data = (Dictionary<string, object>)responseData["data"];
                     Int64 serverTime = (Int64)data["server_time"];
 
@@ -172,13 +247,15 @@ namespace s2sTest
 
                 if (successCounter == 4)
                 {
-                    Console.WriteLine("\n-----Test5 Queue With Random Fail PASS-----");
+                    Console.WriteLine("\n----- PASS -----");
                     context.Disconnect();
                     lastServerTime = 0;
                     successCounter = 0;
+
+                    Console.WriteLine("\nALL TESTS PASS! :tada:");
+                    Environment.Exit(0);
                 }
             }
         }
-
     }
 }
