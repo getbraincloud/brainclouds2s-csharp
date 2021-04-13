@@ -8,6 +8,7 @@ using BrainCloud.JsonFx.Json;
 using System.Collections.Generic;
 using System.Threading;
 using System.Diagnostics;
+using System.IO;
 
 namespace s2sTest
 {
@@ -15,11 +16,45 @@ namespace s2sTest
     {
         static void Main(string[] args)
         {
+            // Load ids.txt
+            string s2sUrl = "";
+            string appId = "";
+            string serverName = "";
+            string serverSecret = "";
+            using (var reader = new StreamReader("ids.txt"))
+            {
+                Console.WriteLine("Found ids.txt");
+                string line;
+                while ((line = reader.ReadLine()) != null)
+                {
+                    if (line.StartsWith("s2sUrl="))
+                    {
+                        s2sUrl = line.Substring(("s2sUrl=").Length);
+                        s2sUrl.Trim();
+                    }
+                    else if (line.StartsWith("appId="))
+                    {
+                        appId = line.Substring(("appId=").Length);
+                        appId.Trim();
+                    }
+                    else if (line.StartsWith("serverSecret="))
+                    {
+                        serverSecret = line.Substring(("serverSecret=").Length);
+                        serverSecret.Trim();
+                    }
+                    else if (line.StartsWith("serverName="))
+                    {
+                        serverName = line.Substring(("serverName=").Length);
+                        serverName.Trim();
+                    }
+                }
+            }
+
             string currentTestName = "";
             int successCounter = 0;
             Int64 lastServerTime = 0;
             BrainCloudS2S context = new BrainCloudS2S();
-            context.Init("20001", "TestServer", "2ddf8355-c516-48dd-a6b0-e35bd75fac80", false, "https://internal.braincloudservers.com/s2sdispatcher");
+            context.Init(appId, serverName, serverSecret, false, s2sUrl);
             context.LoggingEnabled = true;
             Stopwatch stopwatch = new Stopwatch();
 
