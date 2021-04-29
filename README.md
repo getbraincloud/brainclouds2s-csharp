@@ -3,7 +3,7 @@ s2s libs for csharp and unity
 
 # how to use
 ## step 1
-Add the csharp_s2s folder to your project. You will need the JsonFx library that's included. 
+Add the `s2s_src/` folder to your project. You will need the JsonFx library that's included. 
 
 ## step 2
 Instantiate the BrainCloudS2S class and call init.
