@@ -250,10 +250,9 @@ public class BrainCloudS2S
         string packet = CreatePacket(dataPacket);                   //create data packet of the data with packetId info
 
         byte[] byteArray = Encoding.UTF8.GetBytes(packet);          //convert data packet to byte[]
-
+        request.ContentLength = byteArray.Length;
         Stream requestStream = request.GetRequestStream();          //gets a stream to send dataPacket for request
         requestStream.Write(byteArray, 0, byteArray.Length);        //writes dataPacket to stream and sends data with request. 
-        request.ContentLength = byteArray.Length;
     }
 #endif
 
