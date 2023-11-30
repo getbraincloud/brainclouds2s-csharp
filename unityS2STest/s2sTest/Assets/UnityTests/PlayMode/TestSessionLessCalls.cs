@@ -29,7 +29,7 @@ public class TestSessionLessCalls : TestFixtureBase
     {
         //Test 5 - Test Queue
         //three different calls, that should come back in exactly the same order.
-        _tc.context.Authenticate();
+        //_tc.context.Authenticate();
         _tc.context.Request("{\"service\":\"time\",\"operation\":\"READ\"}", onTestQueueCallback);
         _tc.context.Request("{\"service\":\"virtualCurrency\",\"operation\":\"SYS_GET_PARENT_CURRENCY_TYPES\"}", onTestQueueCallback);
         _tc.context.Request("{\"service\":\"virtualCurrency\",\"operation\":\"SYS_GET_PEER_CURRENCY_TYPES\"}", onTestQueueCallback);
