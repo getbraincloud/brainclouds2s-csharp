@@ -546,6 +546,11 @@ public class BrainCloudS2S
         return _rttConnectionStatus == RTTConnectionStatus.CONNECTED;
     }
     
+    public RTTConnectionStatus GetConnectionStatus()
+    {
+        return _rttConnectionStatus;
+    }
+    
     private void RTTUpdate()
     {
         RTTCommandResponse toProcessResponse;
@@ -656,6 +661,14 @@ public class BrainCloudS2S
         else
         {
             LogString("Authentication is required to register callback");
+        }
+    }
+    
+    public void DeregisterRTTRawCallback()
+    {
+        if(_registeredCallbacks.ContainsKey("chat"))
+        {
+            _registeredCallbacks.Remove("chat");            
         }
     }
     
