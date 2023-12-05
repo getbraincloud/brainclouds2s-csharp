@@ -30,7 +30,7 @@ public class BrainCloudS2S
 {
     private static int NO_PACKET_EXPECTED = -1;
     private static int SERVER_SESSION_EXPIRED = 40365;
-    private static string DEFAULT_S2S_URL = "https://api.internal.braincloudservers.com/s2sdispatcher";
+    private static string DEFAULT_S2S_URL = "https://api.braincloudservers.com/s2sdispatcher";
     public string ServerURL
     {
         get; private set;
@@ -99,7 +99,7 @@ public class BrainCloudS2S
     private ArrayList _waitingForAuthRequestQueue = new ArrayList();
     public delegate void S2SCallback(string responseString);
     public delegate void RTTCallback(string responseString);
-    private Dictionary<string, RTTCallback> _registeredCallbacks = new Dictionary<string, RTTCallback>();
+    private RTTCallback _registeredCallbacks;
     S2SRequest activeRequest;
     private S2SRequest rttConnectionCallback;
     private BrainCloudWebSocket _webSocket;
@@ -581,9 +581,9 @@ public class BrainCloudS2S
                 }
 
                 // does this go to one of our registered service listeners? 
-                if (_registeredCallbacks.ContainsKey(toProcessResponse.Service))
+                if (_registeredCallbacks != null)
                 {
-                    _registeredCallbacks[toProcessResponse.Service](toProcessResponse.JsonMessage);
+                    _registeredCallbacks(toProcessResponse.JsonMessage);
                 }
 
                 // are we actually connected? only pump this back, when the server says we've connected
@@ -656,7 +656,7 @@ public class BrainCloudS2S
     {
         if(SessionId != null)
         {
-            _registeredCallbacks["chat"] = callback;
+            _registeredCallbacks = callback;
         }
         else
         {
@@ -666,10 +666,7 @@ public class BrainCloudS2S
     
     public void DeregisterRTTRawCallback()
     {
-        if(_registeredCallbacks.ContainsKey("chat"))
-        {
-            _registeredCallbacks.Remove("chat");            
-        }
+        _registeredCallbacks = null;
     }
     
     public void ConnectToChannel(string in_channelId,S2SCallback callback)
