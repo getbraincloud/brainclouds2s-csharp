@@ -66,52 +66,21 @@ public class BrainCloudS2S
         Authenticating,
         Disconnected
     }
-    
-    public enum RTTConnectionStatus
-    {
-        CONNECTED,
-        DISCONNECTED,
-        CONNECTING,
-        DISCONNECTING
-    }
-    
-    public enum WebsocketStatus
-    {
-        OPEN,
-        CLOSED,
-        MESSAGE, 
-        ERROR,
-        NONE
-    }
 
     private long _packetId = 0;
     private long _heartbeatSeconds = 1800; //Default to 30 mins  
     private State _state = State.Disconnected;
-    private RTTConnectionStatus _rttConnectionStatus = RTTConnectionStatus.DISCONNECTED;
-    private WebsocketStatus _webSocketStatus = WebsocketStatus.NONE;
     private bool _autoAuth = false;
-    public bool _channelConnected = false;
     private TimeSpan _heartbeatTimer;
     private DateTime _lastHeartbeat;
-    private TimeSpan _sinceLastRTTHeartbeat;
-    private TimeSpan _heartbeatRTTTime = TimeSpan.FromMilliseconds(10 * 1000);
     private ArrayList _requestQueue = new ArrayList();
     private ArrayList _waitingForAuthRequestQueue = new ArrayList();
+    private Brainclouds2sRttComms _rttComms;
     public delegate void S2SCallback(string responseString);
-    public delegate void RTTCallback(string responseString);
-    private RTTCallback _registeredCallbacks;
-    S2SRequest activeRequest;
-    private S2SRequest rttConnectionCallback;
-    private BrainCloudWebSocket _webSocket;
-    private Dictionary<string, object> _rttHeaders = new Dictionary<string, object>();
-    private Dictionary<string, object> _endpoint = null;
-    private List<RTTCommandResponse> _queuedRTTCommands = new List<RTTCommandResponse>();
-    private bool _disconnectedWithReason = false;
-    private Dictionary<string, object> _disconnectJson = new Dictionary<string, object>();
-    public string RTTConnectionID { get; private set; }
-    public string RTTEventServer { get; private set; }
 
-    private struct S2SRequest
+    S2SRequest activeRequest;
+
+    public struct S2SRequest
     {
 #if DOT_NET
         public HttpWebRequest request;
@@ -122,18 +91,7 @@ public class BrainCloudS2S
         public string requestData;
         public S2SCallback callback;
     }
-    private struct RTTCommandResponse
-    {
-        public RTTCommandResponse(string in_service, string in_op, string in_msg)
-        {
-            Service = in_service;
-            Operation = in_op;
-            JsonMessage = in_msg;
-        }
-        public string Service { get; set; }
-        public string Operation { get; set; }
-        public string JsonMessage { get; set; }
-    }
+
 
     /**
         * Initialize brainclouds2s context
@@ -169,6 +127,11 @@ public class BrainCloudS2S
         SessionId = null;
         activeRequest.request = null;
         _heartbeatTimer = TimeSpan.FromSeconds(_heartbeatSeconds);
+        
+        if(_rttComms == null)
+        {
+            _rttComms = new Brainclouds2sRttComms();
+        }
     }
 
     /**
@@ -238,7 +201,7 @@ public class BrainCloudS2S
         }
     }
 
-    private void QueueRequest(string jsonRequestData, S2SCallback callback)
+    public void QueueRequest(string jsonRequestData, S2SCallback callback)
     {
 #if DOT_NET
         //create new request
@@ -341,58 +304,7 @@ public class BrainCloudS2S
             QueueRequest(jsonHeartbeatString, callback);
         }
     }
-    
-    public void EnableRTT(S2SCallback callback)
-    {
-        if(SessionId != null)
-        {
-            Dictionary<string, object> requstInfo = new Dictionary<string, object>();
-            requstInfo = new Dictionary<string, object>();
-            requstInfo.Add("service", "rttRegistration");
-            requstInfo.Add("operation", "REQUEST_SYSTEM_CONNECTION");
-            string contextInfo = JsonWriter.Serialize(requstInfo);
-            rttConnectionCallback = new S2SRequest();
-            rttConnectionCallback.callback = callback;
-            rttConnectionCallback.requestData = contextInfo;
-            QueueRequest(contextInfo, OnRTTConnectCallback);
-        }
-        else if(callback != null)
-        {
-            callback("Unable to request RTT connection without a session established, please authenticate and try again.");
-        }
-    }
-    
-    public void DisableRTT()
-    {
-        if (_rttConnectionStatus != RTTConnectionStatus.CONNECTED || _rttConnectionStatus == RTTConnectionStatus.DISCONNECTING)
-        {
-            return;
-        }
-        AddQueueRTTResponse(new RTTCommandResponse("rttRegistration", "disconnect", "DisableRTT Called"));
-    }
-    
-    private void DisconnectFromRTT()
-    {
-        if (_webSocket != null) _webSocket.Close();
 
-        RTTConnectionID = "";
-        RTTEventServer = "";
-        _channelConnected = false;
-        _webSocket = null;
-
-        if (_disconnectedWithReason == true)
-        {
-            if (LoggingEnabled)
-            {
-                LogString("RTT: Disconnect: " + JsonWriter.Serialize(_disconnectJson));
-            }
-            if (rttConnectionCallback.callback != null)
-            {
-                rttConnectionCallback.callback((string)_disconnectJson["reason"]);
-            }
-        }
-        _rttConnectionStatus = RTTConnectionStatus.DISCONNECTED;
-    }
 
 #if DOT_NET
     private string ReadResponseBody(HttpWebResponse response)
@@ -403,7 +315,7 @@ public class BrainCloudS2S
     }
 #endif
 
-    private void LogString(string s)
+    public void LogString(string s)
     {
         if (LoggingEnabled)
         {
@@ -516,7 +428,7 @@ public class BrainCloudS2S
                             activeRequest.callback(JsonWriter.Serialize((Dictionary<string, object>)messageResponses));
                         }
 
-                        activeRequest.request.Abort();
+                        activeRequest.request?.Abort();
 
                         //remove the finished request from the queue
                         _requestQueue.RemoveAt(0);
@@ -535,218 +447,10 @@ public class BrainCloudS2S
             }
         }
         
-        if(_rttConnectionStatus != RTTConnectionStatus.DISCONNECTED || _queuedRTTCommands.Count > 0)
+        if(_rttComms.InquireRTTStatusForUpdate())
         {
-            RTTUpdate();
+            _rttComms.RunCallbacks();
         }
-    }
-    
-    public bool IsRTTEnabled()
-    {
-        return _rttConnectionStatus == RTTConnectionStatus.CONNECTED;
-    }
-    
-    public RTTConnectionStatus GetConnectionStatus()
-    {
-        return _rttConnectionStatus;
-    }
-    
-    private void RTTUpdate()
-    {
-        RTTCommandResponse toProcessResponse;
-        lock (_queuedRTTCommands)
-        {
-            for (int i = 0; i < _queuedRTTCommands.Count; ++i)
-            {
-                toProcessResponse = _queuedRTTCommands[i];
-
-                //the rtt websocket has closed and RTT needs to be re-enabled. disconnect is called to fully reset connection
-                //Failure Callback 
-                if (_webSocketStatus == WebsocketStatus.CLOSED)
-                {
-                    rttConnectionCallback.callback("RTT Connection has been closed. Re-Enable RTT to re-establish connection :" + toProcessResponse.JsonMessage);
-                    _rttConnectionStatus = RTTConnectionStatus.DISCONNECTING;
-                    DisconnectFromRTT();
-                    break;
-                }
-
-                //the rtt websocket has closed and RTT needs to be re-enabled. disconnect is called to fully reset connection 
-                //Failure callback
-                if (_webSocketStatus == WebsocketStatus.CLOSED)
-                {
-                    rttConnectionCallback.callback("RTT Connection has been closed. Re-Enable RTT to re-establish connection : " + toProcessResponse.JsonMessage);
-                    _rttConnectionStatus = RTTConnectionStatus.DISCONNECTING;
-                    DisconnectFromRTT();
-                    break;
-                }
-
-                // does this go to one of our registered service listeners? 
-                if (_registeredCallbacks != null)
-                {
-                    _registeredCallbacks(toProcessResponse.JsonMessage);
-                }
-
-                // are we actually connected? only pump this back, when the server says we've connected
-                //Success Callback
-                else if (_rttConnectionStatus == RTTConnectionStatus.CONNECTING && rttConnectionCallback.callback != null && toProcessResponse.Operation == "connect")
-                {
-                    _sinceLastRTTHeartbeat = DateTime.Now.TimeOfDay;
-                    rttConnectionCallback.callback(toProcessResponse.JsonMessage);
-                    _rttConnectionStatus = RTTConnectionStatus.CONNECTED;
-                }
-
-                //if we're connected and we get a disconnect - we disconnect the comms... 
-                //Failure Callback
-                else if (_rttConnectionStatus == RTTConnectionStatus.CONNECTED && rttConnectionCallback.callback != null && toProcessResponse.Operation == "disconnect")
-                {
-                    _rttConnectionStatus = RTTConnectionStatus.DISCONNECTING;
-                    DisconnectFromRTT();
-                }
-
-                //If there's an error, we send back the error
-                //Failure callback
-                else if (rttConnectionCallback.callback != null && toProcessResponse.Operation == "error")
-                {
-                    if(toProcessResponse.JsonMessage != null)
-                    {   
-                        rttConnectionCallback.callback(toProcessResponse.JsonMessage);
-                    }
-                    else
-                    {
-                        rttConnectionCallback.callback("Error - No Response from Server");
-                    }
-                }
-
-                //if we're not connected and we're trying to connect, then start the connection
-                else if (_rttConnectionStatus == RTTConnectionStatus.DISCONNECTED && toProcessResponse.Operation == "connect")
-                {
-                    // first time connecting? send the server connection call
-                    _rttConnectionStatus = RTTConnectionStatus.CONNECTING;
-                    SendRTTRequest(buildConnectionRequest());
-                }
-                else
-                {
-                    if (LoggingEnabled)
-                    {
-                        LogString("WARNING no handler registered for RTT callbacks ");
-                    }
-                }
-
-            }
-
-            _queuedRTTCommands.Clear();
-        }
-
-        if (_rttConnectionStatus == RTTConnectionStatus.CONNECTED)
-        {
-            if ((DateTime.Now.TimeOfDay - _sinceLastRTTHeartbeat) >= _heartbeatRTTTime)
-            {
-                _sinceLastRTTHeartbeat = DateTime.Now.TimeOfDay;
-                Dictionary<string, object> json = new Dictionary<string, object>();
-                json["service"] = "rtt";
-                json["operation"] = "HEARTBEAT";
-                json["data"] = null;
-                string heartBeatRequest = JsonWriter.Serialize(json);
-                SendRTTRequest(heartBeatRequest, true);
-            }
-        }
-    }
-
-    public void RegisterRTTRawCallback(RTTCallback callback)
-    {
-        if(SessionId != null)
-        {
-            _registeredCallbacks = callback;
-        }
-        else
-        {
-            LogString("Authentication is required to register callback");
-        }
-    }
-    
-    public void DeregisterRTTRawCallback()
-    {
-        _registeredCallbacks = null;
-    }
-    
-    public void ConnectToChannel(string in_channelId,S2SCallback callback)
-    {
-        Dictionary<string, object> jsonData = new Dictionary<string, object>();
-        jsonData["service"] = "chat";
-        jsonData["operation"] = "SYS_CHANNEL_CONNECT";
-        Dictionary<string, object> data = new Dictionary<string, object>();
-        data["channelId"] = in_channelId; 
-        data["maxReturn"] = 100;
-        jsonData["data"] = data;
-        string jsonString = JsonWriter.Serialize(jsonData);
-        QueueRequest(jsonString, (response) =>
-        {
-            callback(response);
-            _channelConnected = true;
-            if(LoggingEnabled)
-            {
-                LogString("Channel Connected");
-            }
-        });
-    }
-    
-    public void SendRawRTTPacket(string in_channelId, Dictionary<string, object> in_jsonData)
-    {
-        if (!_channelConnected)
-        {
-            LogString("Connect to channel before sending packet.");
-            return;
-        }
-    
-        Dictionary<string, object> json = new Dictionary<string, object>
-        {
-            ["service"] = "chat",
-            ["operation"] = "SYS_POST_CHAT_MESSAGE"
-        };
-        Dictionary<string, object> jsonData = new Dictionary<string, object>
-        {
-            ["channelId"] = in_channelId,
-            ["content"] = in_jsonData,
-            ["recordInHistory"] = false
-        };
-        json["data"] = jsonData;
-        string jsonDataString = JsonWriter.Serialize(json);
-        QueueRequest(jsonDataString, null);
-    }
-    
-    private bool SendRTTRequest(string in_message, bool in_bLogMessage = true)
-    {
-        bool bMessageSent = false;
-        // early return
-        if (_webSocket == null)
-        {
-            return bMessageSent;
-        }
-
-        try
-        {
-            if (in_bLogMessage)
-            {
-                if (LoggingEnabled)
-                {
-                    LogString("RTT SEND: " + in_message);
-                }
-            }
-
-            // Web Socket 
-            byte[] data = Encoding.ASCII.GetBytes(in_message);
-            _webSocket.SendAsync(data);
-        }
-        catch (Exception socketException)
-        {
-            if (LoggingEnabled)
-            {
-                LogString("send exception: " + socketException);
-            }
-            AddQueueRTTResponse(new RTTCommandResponse("rttRegistration", "error", buildRTTRequestError(socketException.ToString())));
-        }
-
-        return bMessageSent;
     }
 
     /**
@@ -758,6 +462,7 @@ public class BrainCloudS2S
         _state = State.Disconnected;
         SessionId = null;
         _packetId = 0;
+        DisableRTT();
     }
 
     public void OnAuthenticationCallback(string responseString)
@@ -817,218 +522,116 @@ public class BrainCloudS2S
         Disconnect();
     }
     
-    public void OnRTTConnectCallback(string responseString)
+    /// <summary>
+    /// Returns true if RTT connection status is connected
+    /// </summary>
+    public bool IsRTTEnabled()
     {
-        Dictionary<string, object> response = null;
-        try
+        if(_rttComms == null)
         {
-            response = (Dictionary<string, object>)JsonReader.Deserialize(responseString);
+            LogString("Please initialize first before checking if RTT is enabled.");
+            return false;
         }
-        catch
-        {
-            return;
-        }
-        Dictionary<string, object> jsonData = (Dictionary<string, object>)response["data"];
-        Array endpoints = (Array)jsonData["endpoints"];
-        _rttHeaders = (Dictionary<string, object>)jsonData["auth"];
-        Debug.Log("RTT Connect Callback");
-
-        //   1st choice: websocket + ssl
-        //   2nd: websocket
-        _endpoint = getEndpointForType(endpoints, "ws", true);
-        if (_endpoint == null)
-        {
-            _endpoint = getEndpointForType(endpoints, "ws", false);
-        }
-        if (_rttConnectionStatus == RTTConnectionStatus.DISCONNECTED)
-        {
-            bool sslEnabled = (bool)_endpoint["ssl"];
-            string url = (sslEnabled ? "wss://" : "ws://") + _endpoint["host"] as string + ":" + (int)_endpoint["port"] + getUrlQueryParameters();
-            setupWebSocket(url);
-        }
+        return _rttComms.IsRTTEnabled();
     }
     
-    private Dictionary<string, object> getEndpointForType(Array endpoints, string type, bool in_bWantSsl)
+    /// <summary>
+    /// Enables Real Time event for this session.
+    /// Real Time events are disabled by default. 
+    ///
+    ///This function will first call requestClientConnection, then connect to the address
+    /// </summary>
+    /// <param name="callback">Callback for after we connect to the address.</param>
+    public void EnableRTT(S2SCallback callback)
     {
-        Dictionary<string, object> toReturn = null;
-        Dictionary<string, object> tempToReturn = null;
-        for (int i = 0; i < endpoints.Length; ++i)
+        if(_rttComms != null)
         {
-            tempToReturn = endpoints.GetValue(i) as Dictionary<string, object>;
-            if (tempToReturn["protocol"] as string == type)
-            {
-                if (in_bWantSsl)
-                {
-                    if ((bool)tempToReturn["ssl"])
-                    {
-                        toReturn = tempToReturn;
-                        break;
-                    }
-                }
-                else
-                {
-                    toReturn = tempToReturn;
-                    break;
-                }
-            }
+            _rttComms.EnableRTT(callback, this);            
         }
-
-        return toReturn;
-    }
-    
-    private string getUrlQueryParameters()
-    {
-        string sToReturn = "?";
-        int count = 0;
-        foreach (KeyValuePair<string, object> item in _rttHeaders)
+        else
         {
-            if (count > 0) sToReturn += "&";
-            sToReturn += item.Key + "=" + item.Value;
-            ++count;
-        }
-
-        return sToReturn;
-    }
-
-    private string buildConnectionRequest()
-    {
-        Dictionary<string, object> system = new Dictionary<string, object>();
-#if DOT_NET
-        system["platform"] = "csharp";
-#elif USE_WEB_REQUEST
-        system["platform"] = "csharp-unity";
-#endif
-        system["protocol"] = "ws";
-
-        Dictionary<string, object> jsonData = new Dictionary<string, object>();
-        jsonData["appId"] = AppId;
-        jsonData["sessionId"] = SessionId;
-        jsonData["profileId"] = "s";
-        jsonData["system"] = system;
-
-        jsonData["auth"] = _rttHeaders;
-
-        Dictionary<string, object> json = new Dictionary<string, object>();
-        json["service"] = "rtt";
-        json["operation"] = "CONNECT";
-        json["data"] = jsonData;
-
-        return JsonWriter.Serialize(json);
-    }
-    private void setupWebSocket(string in_url)
-     {
-         _webSocket = new BrainCloudWebSocket(in_url);
-         _webSocket.OnClose += WebSocket_OnClose;
-         _webSocket.OnOpen += Websocket_OnOpen;
-         _webSocket.OnMessage += WebSocket_OnMessage;
-         _webSocket.OnError += WebSocket_OnError;
-     }
-     
-    private void WebSocket_OnClose(BrainCloudWebSocket sender, int code, string reason)
-    {
-        if (LoggingEnabled)
-        {
-            LogString("RTT: Connection closed: " + reason);
-        }
-        _webSocketStatus = WebsocketStatus.CLOSED;
-        AddQueueRTTResponse(new RTTCommandResponse("rttRegistration", "disconnect", reason));
-    }
-
-    private void Websocket_OnOpen(BrainCloudWebSocket accepted)
-    {
-        if (LoggingEnabled)
-        {
-            LogString("RTT: WebSocket is open.");
-        }
-        _webSocketStatus = WebsocketStatus.OPEN;
-        AddQueueRTTResponse(new RTTCommandResponse("rttRegistration", "connect", ""));
-    }
-    
-    private void WebSocket_OnError(BrainCloudWebSocket sender, string message)
-    {
-        if (LoggingEnabled)
-        {
-            LogString("RTT Error: " + message);
-        }
-        _webSocketStatus = WebsocketStatus.ERROR;
-        AddQueueRTTResponse(new RTTCommandResponse("rttRegistration", "error", buildRTTRequestError(message)));
-    }
-    private void WebSocket_OnMessage(BrainCloudWebSocket sender, byte[] data)
-    {
-        if (data.Length == 0) return;
-        _webSocketStatus = WebsocketStatus.MESSAGE;
-        string message = Encoding.UTF8.GetString(data);
-        onRecv(message);
-    }
-    
-    private void onRecv(string in_message)
-    {
-        if (LoggingEnabled)
-        {
-            LogString("RTT RECV: " + in_message);
-        }
-
-        Dictionary<string, object> response = (Dictionary<string, object>)JsonReader.Deserialize(in_message);
-
-        string service = (string)response["service"];
-        string operation = (string)response["operation"];
-
-        Dictionary<string, object> data = null;
-        if (response.ContainsKey("data"))
-            data = (Dictionary<string, object>)response["data"];
-        if (operation == "CONNECT")
-        {
-            int heartBeat = _heartbeatRTTTime.Milliseconds / 1000;
-            try
-            {
-                heartBeat = (int)data["heartbeatSeconds"];
-            }
-            catch (Exception)
-            {
-                heartBeat = (int)data["wsHeartbeatSecs"];
-            }
             if(LoggingEnabled)
             {
-                LogString("RTT WebSocket Connection Established.");
+                LogString("You need to initialize first before checking if RTT is enabled.");
             }
-            _heartbeatRTTTime = TimeSpan.FromMilliseconds(heartBeat * 1000);
-        }
-        else if (operation == "DISCONNECT")
-        {
-            _disconnectedWithReason = true;
-            _disconnectJson["reason_code"] = (int)data["reasonCode"];
-            _disconnectJson["reason"] = (string)data["reason"];
-            _disconnectJson["severity"] = "ERROR";
-        }
-
-        if (data != null)
-        {
-            if (data.ContainsKey("cxId")) RTTConnectionID = (string)data["cxId"];
-            if (data.ContainsKey("evs")) RTTEventServer = (string)data["evs"];
-        }
-
-        if (operation != "HEARTBEAT")
-        {
-            AddQueueRTTResponse(new RTTCommandResponse(service.ToLower(), operation.ToLower(), in_message));
         }
     }
     
-    private string buildRTTRequestError(string in_statusMessage)
+    /// <summary>
+    /// Disables Real Time event for this session.
+    /// </summary>
+    public void DisableRTT()
     {
-        Dictionary<string, object> json = new Dictionary<string, object>();
-        json["status"] = 403;
-        json["reason_code"] = 80300;
-        json["status_message"] = in_statusMessage;
-        json["severity"] = "ERROR";
-
-        return JsonWriter.Serialize(json);
-    }
-    
-    private void AddQueueRTTResponse(RTTCommandResponse in_command)
-    {
-        lock (_queuedRTTCommands)
+        if(_rttComms != null)
         {
-            _queuedRTTCommands.Add(in_command);
+            _rttComms.DisableRTT();
+        }
+        else
+        {
+            if(LoggingEnabled)
+            {
+                LogString("You need to initialize and EnableRTT first before disabling RTT.");
+            }
         }
     }
+    
+    /// <summary>
+    /// Send a raw packet to the main channel.
+    /// Must call RegisterRTTRawCallback() and ConnectToChannel() before sending anything,
+    /// otherwise you won't receive callbacks for Raw Packets.
+    /// </summary>
+    /// <param name="in_jsonData">JSON Data to send</param>
+    public void SendRawRTTPacket(Dictionary<string, object> in_jsonData)
+    {
+        _rttComms.SendRawRTTPacket(in_jsonData);
+    }
+    
+    /// <summary>
+    /// Register to receive Raw Callbacks with RTT.
+    /// After registering and ConnectToChannel() you can call SendRawRTTPacket().
+    /// </summary>
+    /// <param name="callback"></param>
+    public void RegisterRTTRawCallback(Brainclouds2sRttComms.RTTCallback callback)
+    {
+        if(_rttComms != null && callback != null)
+        {
+            _rttComms.RegisterRTTRawCallback(callback);
+        }
+        else
+        {
+            if(LoggingEnabled)
+            {
+                LogString("You need to initialize and EnableRTT first before registering the callback");
+            }
+        }
+    }
+    
+    /// <summary>
+    /// Removing the registered RTTRawCallback.
+    /// </summary>
+    public void DeregisterRTTRawCallback()
+    {
+        if(_rttComms != null)
+        {
+            _rttComms.DeregisterRTTRawCallback();            
+        }
+
+    }
+    
+    /// <summary>
+    /// Channel to connect for subscribing raw callbacks.
+    /// </summary>
+    /// <param name="in_channel">Used to connect to a channel with. IE: {AppID}:sl:mysyschannel</param>
+    /// <param name="callback">Callback for channel connecting.</param>
+    public void ConnectToChannel(string in_channel, S2SCallback callback)
+    {
+        if(_rttComms != null)
+        {
+            if(_rttComms.IsRTTEnabled())
+            {
+                _rttComms.ConnectToChannel(in_channel, callback);
+            }
+        }
+    }
+
 }

@@ -20,16 +20,25 @@ public class TestRTTCalls: TestFixtureBase
         
         _tc.context.RegisterRTTRawCallback(OnRTTRawCallback);
         string channelId = AppId + ":sy:mysyschannel";
-        _tc.context.ConnectToChannel(channelId,OnTestAuthenticationCallback);
+        _tc.context.ConnectToChannel(channelId, OnTestAuthenticationCallback);
         yield return _tc.StartCoroutine(_tc.Run());
         
         Dictionary<string, object> jsonInfo = new Dictionary<string, object>();
         var mockPlayerName = "braincloudTester";
         jsonInfo["playerName"] = mockPlayerName;
-        _tc.context.SendRawRTTPacket(channelId, jsonInfo);
+        _tc.context.SendRawRTTPacket(jsonInfo);
         yield return _tc.StartCoroutine(_tc.Run());
         
-        LogResults("Failed to get RTT Info", _tc.successCount == 4);
+        _tc.context.DisableRTT();
+        _tc.context.DeregisterRTTRawCallback();
+        _tc.context.RunCallbacks();
+        yield return new WaitForSeconds(3);
+        if(!_tc.context.IsRTTEnabled())
+        {
+            _tc.successCount++;
+        }
+        
+        LogResults("Failed to get RTT Info", _tc.successCount == 5);
     }
     
     void OnRTTRawCallback(string jsonResponse)
