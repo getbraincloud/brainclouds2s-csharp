@@ -5,8 +5,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Brainclouds2s", "Braincloud
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UnityTests", "UnityTests.csproj", "{e649369f-f664-4cec-73af-6e5eda687b0e}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Assembly-CSharp", "Assembly-CSharp.csproj", "{5d1fe489-fbcd-2de1-3861-3a1bd65328f0}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -21,10 +19,6 @@ Global
 		{e649369f-f664-4cec-73af-6e5eda687b0e}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{e649369f-f664-4cec-73af-6e5eda687b0e}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{e649369f-f664-4cec-73af-6e5eda687b0e}.Release|Any CPU.Build.0 = Release|Any CPU
-		{5d1fe489-fbcd-2de1-3861-3a1bd65328f0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{5d1fe489-fbcd-2de1-3861-3a1bd65328f0}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{5d1fe489-fbcd-2de1-3861-3a1bd65328f0}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{5d1fe489-fbcd-2de1-3861-3a1bd65328f0}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
