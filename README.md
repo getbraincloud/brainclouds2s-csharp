@@ -11,7 +11,7 @@ Instantiate the BrainCloudS2S class and call init.
 ex.
 ```
 BrainCloudS2S context = new BrainCloudS2S();
-context.init("appId", "serverName", "serverSecret", "serverURL");
+context.Init("appId", "serverName", "serverSecret", "serverURL", false);
 ```
 
 ## step 3
@@ -19,8 +19,8 @@ Either call authenticate, then call your request.
   
 ex.
 ```
-context.authenticate();
-context.request("", null);
+context.Authenticate();
+context.Request("", null);
 ```
 
 ## step 4
@@ -30,7 +30,7 @@ ex.
 ```
 update()
 {
-    context.runCallbacks();
+    context.RunCallbacks();
 }
 ```
       
@@ -47,7 +47,7 @@ You can either send the request as a json string, or a Dictionary<string,object>
   
 string example:
 ```
-context.request("{\"service\":\"time\",\"operation\":\"READ\"}", null);
+context.Request("{\"service\":\"time\",\"operation\":\"READ\"}", null);
 ```
 
 Dictionary example:
