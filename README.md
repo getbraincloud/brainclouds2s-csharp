@@ -58,3 +58,47 @@ request.Add("operation", "READ");
 context.request(request, null);
 ```
   
+## Enable RTT
+To use RTT features you must enable RTT which will connect to brainClouds WebSocket RTT server. 
+```
+brainCloudS2SRef.EnableRTT(responseString =>
+{
+    Debug.Log("Response: " + responseString);
+});
+```
+###Register an RTT callback
+This is how you can register a callback that will be triggered whenever you receive an RTT message from the brainCloud WebSocket server
+```
+brainCloudS2SRef.RegisterRTTRawCallback(responseString =>
+{
+    Debug.Log("Received a raw callback: " + responseString);
+});
+```
+
+## Connect to a channel and send raw RTT Packets
+After enabling and registering RTT callbacks, you will be able to connect to a channel and send raw RTT packets to this channel which will be received by others who are also connected to this channel.
+```
+brainCloudS2SRef.ConnectToChannel(channelId, responseString =>
+{
+    Debug.Log("Response for connecting to channel: " + responseString);
+});
+```
+Once you have been connected to the channel, you can send raw RTT packets like this
+```
+Dictionary<string, object> jsonInfo = new Dictionary<string, object>();
+var playerName = "braincloudTester";
+jsonInfo["playerName"] = playerName;
+jsonInfo["playerLevel"] = 5;
+brainCloudS2SRef.SendRawRTTPacket(jsonInfo);
+```
+
+## Disconnecting RTT 
+In order to disconnect from RTT you will need to call the following functions:
+```
+brainCloudS2SRef.DisableRTT();
+brainCloudS2SRef.DeregisterRTTRawCallback();
+```
+For logging out the user and shutting down RTT, use this function:
+```
+brainCloudS2SRef.Disconnect();
+```
