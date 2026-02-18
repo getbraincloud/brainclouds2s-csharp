@@ -1,6 +1,6 @@
 //----------------------------------------------------
 // brainCloud client source code
-// Copyright 2020 bitHeads, inc.
+// Copyright 2026 bitHeads, inc.
 //----------------------------------------------------
 #if ((UNITY_5_3_OR_NEWER) && !UNITY_WEBPLAYER && (!UNITY_IOS || ENABLE_IL2CPP)) || UNITY_2018_3_OR_NEWER
 #define USE_WEB_REQUEST //Comment out to force use of old WWW class on Unity 5.3+
@@ -28,6 +28,7 @@ using BrainCloud.JsonFx.Json;
 
 public class BrainCloudS2S
 {
+    public const string VERSION = "5.9.0";
     private static int NO_PACKET_EXPECTED = -1;
     private static int SERVER_SESSION_EXPIRED = 40365;
     private static string DEFAULT_S2S_URL = "https://api.braincloudservers.com/s2sdispatcher";
@@ -126,7 +127,7 @@ public class BrainCloudS2S
         activeRequest.request = null;
         _heartbeatTimer = TimeSpan.FromSeconds(_heartbeatSeconds);
 
-        if(_rttComms == null)
+        if (_rttComms == null)
         {
             _rttComms = new Brainclouds2sRttComms();
         }
@@ -441,7 +442,7 @@ public class BrainCloudS2S
             }
         }
 
-        if(_rttComms != null && _rttComms.InquireRTTStatusForUpdate())
+        if (_rttComms != null && _rttComms.InquireRTTStatusForUpdate())
         {
             _rttComms.RunCallbacks();
         }
@@ -521,7 +522,7 @@ public class BrainCloudS2S
     /// </summary>
     public bool IsRTTEnabled()
     {
-        if(_rttComms == null)
+        if (_rttComms == null)
         {
             LogString("Please initialize first before checking if RTT is enabled.");
             return false;
@@ -538,13 +539,13 @@ public class BrainCloudS2S
     /// <param name="callback">Callback for after we connect to the address.</param>
     public void EnableRTT(S2SCallback callback)
     {
-        if(_rttComms != null)
+        if (_rttComms != null)
         {
             _rttComms.EnableRTT(callback, this);
         }
         else
         {
-            if(LoggingEnabled)
+            if (LoggingEnabled)
             {
                 LogString("You need to initialize first before checking if RTT is enabled.");
             }
@@ -556,13 +557,13 @@ public class BrainCloudS2S
     /// </summary>
     public void DisableRTT()
     {
-        if(_rttComms != null)
+        if (_rttComms != null)
         {
             _rttComms.DisableRTT();
         }
         else
         {
-            if(LoggingEnabled)
+            if (LoggingEnabled)
             {
                 LogString("You need to initialize and EnableRTT first before disabling RTT.");
             }
@@ -587,13 +588,13 @@ public class BrainCloudS2S
     /// <param name="callback"></param>
     public void RegisterRTTRawCallback(Brainclouds2sRttComms.RTTCallback callback)
     {
-        if(_rttComms != null && callback != null)
+        if (_rttComms != null && callback != null)
         {
             _rttComms.RegisterRTTRawCallback(callback);
         }
         else
         {
-            if(LoggingEnabled)
+            if (LoggingEnabled)
             {
                 LogString("You need to initialize and EnableRTT first before registering the callback");
             }
@@ -605,7 +606,7 @@ public class BrainCloudS2S
     /// </summary>
     public void DeregisterRTTRawCallback()
     {
-        if(_rttComms != null)
+        if (_rttComms != null)
         {
             _rttComms.DeregisterRTTRawCallback();
         }
@@ -618,9 +619,9 @@ public class BrainCloudS2S
     /// <param name="callback">Callback for channel connecting.</param>
     public void ConnectToChannel(string in_channel, S2SCallback callback)
     {
-        if(_rttComms != null)
+        if (_rttComms != null)
         {
-            if(_rttComms.IsRTTEnabled())
+            if (_rttComms.IsRTTEnabled())
             {
                 _rttComms.ConnectToChannel(in_channel, callback);
             }

@@ -1,6 +1,6 @@
 //----------------------------------------------------
 // brainCloud client source code
-// Copyright 2020 bitHeads, inc.
+// Copyright 2026 bitHeads, inc.
 //----------------------------------------------------
 #if ((UNITY_5_3_OR_NEWER) && !UNITY_WEBPLAYER && (!UNITY_IOS || ENABLE_IL2CPP)) || UNITY_2018_3_OR_NEWER
 #define USE_WEB_REQUEST //Comment out to force use of old WWW class on Unity 5.3+
@@ -127,8 +127,8 @@ public class BrainCloudS2S
         SessionId = null;
         activeRequest.request = null;
         _heartbeatTimer = TimeSpan.FromSeconds(_heartbeatSeconds);
-        
-        if(_rttComms == null)
+
+        if (_rttComms == null)
         {
             _rttComms = new Brainclouds2sRttComms();
         }
@@ -446,8 +446,8 @@ public class BrainCloudS2S
                 ResetHeartbeat();
             }
         }
-        
-        if(_rttComms.InquireRTTStatusForUpdate())
+
+        if (_rttComms.InquireRTTStatusForUpdate())
         {
             _rttComms.RunCallbacks();
         }
@@ -521,20 +521,20 @@ public class BrainCloudS2S
         }
         Disconnect();
     }
-    
+
     /// <summary>
     /// Returns true if RTT connection status is connected
     /// </summary>
     public bool IsRTTEnabled()
     {
-        if(_rttComms == null)
+        if (_rttComms == null)
         {
             LogString("Please initialize first before checking if RTT is enabled.");
             return false;
         }
         return _rttComms.IsRTTEnabled();
     }
-    
+
     /// <summary>
     /// Enables Real Time event for this session.
     /// Real Time events are disabled by default. 
@@ -544,37 +544,37 @@ public class BrainCloudS2S
     /// <param name="callback">Callback for after we connect to the address.</param>
     public void EnableRTT(S2SCallback callback)
     {
-        if(_rttComms != null)
+        if (_rttComms != null)
         {
-            _rttComms.EnableRTT(callback, this);            
+            _rttComms.EnableRTT(callback, this);
         }
         else
         {
-            if(LoggingEnabled)
+            if (LoggingEnabled)
             {
                 LogString("You need to initialize first before checking if RTT is enabled.");
             }
         }
     }
-    
+
     /// <summary>
     /// Disables Real Time event for this session.
     /// </summary>
     public void DisableRTT()
     {
-        if(_rttComms != null)
+        if (_rttComms != null)
         {
             _rttComms.DisableRTT();
         }
         else
         {
-            if(LoggingEnabled)
+            if (LoggingEnabled)
             {
                 LogString("You need to initialize and EnableRTT first before disabling RTT.");
             }
         }
     }
-    
+
     /// <summary>
     /// Send a raw packet to the main channel.
     /// Must call RegisterRTTRawCallback() and ConnectToChannel() before sending anything,
@@ -585,7 +585,7 @@ public class BrainCloudS2S
     {
         _rttComms.SendRawRTTPacket(in_jsonData);
     }
-    
+
     /// <summary>
     /// Register to receive Raw Callbacks with RTT.
     /// After registering and ConnectToChannel() you can call SendRawRTTPacket().
@@ -593,31 +593,31 @@ public class BrainCloudS2S
     /// <param name="callback"></param>
     public void RegisterRTTRawCallback(Brainclouds2sRttComms.RTTCallback callback)
     {
-        if(_rttComms != null && callback != null)
+        if (_rttComms != null && callback != null)
         {
             _rttComms.RegisterRTTRawCallback(callback);
         }
         else
         {
-            if(LoggingEnabled)
+            if (LoggingEnabled)
             {
                 LogString("You need to initialize and EnableRTT first before registering the callback");
             }
         }
     }
-    
+
     /// <summary>
     /// Removing the registered RTTRawCallback.
     /// </summary>
     public void DeregisterRTTRawCallback()
     {
-        if(_rttComms != null)
+        if (_rttComms != null)
         {
-            _rttComms.DeregisterRTTRawCallback();            
+            _rttComms.DeregisterRTTRawCallback();
         }
 
     }
-    
+
     /// <summary>
     /// Channel to connect for subscribing raw callbacks.
     /// </summary>
@@ -625,9 +625,9 @@ public class BrainCloudS2S
     /// <param name="callback">Callback for channel connecting.</param>
     public void ConnectToChannel(string in_channel, S2SCallback callback)
     {
-        if(_rttComms != null)
+        if (_rttComms != null)
         {
-            if(_rttComms.IsRTTEnabled())
+            if (_rttComms.IsRTTEnabled())
             {
                 _rttComms.ConnectToChannel(in_channel, callback);
             }
