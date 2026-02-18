@@ -28,6 +28,7 @@ using BrainCloud.JsonFx.Json;
 
 public class BrainCloudS2S
 {
+    private static string VERSION = "5.9.0";
     private static int NO_PACKET_EXPECTED = -1;
     private static int SERVER_SESSION_EXPIRED = 40365;
     private static string DEFAULT_S2S_URL = "https://api.braincloudservers.com/s2sdispatcher";
@@ -250,9 +251,10 @@ public class BrainCloudS2S
         string packet = CreatePacket(dataPacket);                   //create data packet of the data with packetId info
 
         byte[] byteArray = Encoding.UTF8.GetBytes(packet);          //convert data packet to byte[]
-        request.ContentLength = byteArray.Length;
+
         Stream requestStream = request.GetRequestStream();          //gets a stream to send dataPacket for request
         requestStream.Write(byteArray, 0, byteArray.Length);        //writes dataPacket to stream and sends data with request. 
+        request.ContentLength = byteArray.Length;
     }
 #endif
 

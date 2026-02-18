@@ -293,7 +293,7 @@ public class BrainCloudS2S
         _state = State.Authenticating;
         string jsonAuthString = "{\"service\":\"authenticationV2\",\"operation\":\"AUTHENTICATE\",\"data\":{\"appId\":\"" + AppId + "\",\"serverName\":\"" + ServerName + "\",\"serverSecret\":\"" + ServerSecret + "\"}}";
         _packetId = 0;
-        QueueRequest(jsonAuthString, callback + OnAuthenticationCallback); //We need to call OnAuthenticate callback to refill the queue with requests waiting on an auth request, and handle heartbeat and sessionId data. 
+        QueueRequest(jsonAuthString, OnAuthenticationCallback + callback); //We need to call OnAuthenticate callback to refill the queue with requests waiting on an auth request, and handle heartbeat and sessionId data. 
     }
 
     public void SendHeartbeat(S2SCallback callback)
@@ -476,7 +476,7 @@ public class BrainCloudS2S
         {
             return;
         }
-
+        Debug.Log("[Internal] OnAuthCallback " + responseString);
         if (response != null)
         {
             ////check if its a failure
@@ -486,6 +486,7 @@ public class BrainCloudS2S
                 if (data.ContainsKey("sessionId") && data.ContainsKey("heartbeatSeconds"))
                 {
                     SessionId = (string)data["sessionId"];
+                    Debug.Log("[Internal] SessionID captured: " + SessionId);
                     if (data.ContainsKey("heartbeatSeconds"))
                     {
                         _heartbeatSeconds = (int)data["heartbeatSeconds"]; // get the heartbeat seconds from braincloud.
