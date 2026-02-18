@@ -31,33 +31,33 @@ namespace Tests.PlayMode
         public string ServerName;
         public string ServerSecret;
         public string S2S_URL;
-        
+
         protected GameObject _gameObject;
         protected TestContainer _tc;
         protected bool _isRunning;
         private string pathToIds;
-        
+
         protected string username = "UnityTestUser";
         protected string password = "testPass";
         protected bool forceCreate = true;
-        
+
         private JsonWriterSettings _writerSettings = new JsonWriterSettings
         {
             PrettyPrint = true,
             Tab = "  "
         };
-        
+
         [TearDown]
         public virtual void TearDown()
         {
             Debug.Log("Tearing Down....");
-            if(_tc.context.IsRTTEnabled())
+            if (_tc.context.IsRTTEnabled())
             {
                 _tc.context.DisableRTT();
                 _tc.context.RunCallbacks();
             }
             _tc.CleanUp();
-            
+
             //Destroy(_tc.context);
             var listOfContainers = FindObjectsOfType<Transform>();
             foreach (Transform container in listOfContainers)
@@ -67,19 +67,19 @@ namespace Tests.PlayMode
                     Destroy(container.gameObject);
                 }
             }
-            
+
             _tc = null;
         }
-    
+
         [SetUp]
         public void SetUp()
         {
             Debug.Log("Setting Up......");
-            
+
             LoadIds();
             _gameObject = Instantiate(new GameObject("TestingContainer"), Vector3.zero, Quaternion.identity);
             _tc = _gameObject.AddComponent<TestContainer>();
-            
+
             Dictionary<string, string> secretMap = new Dictionary<string, string>();
             secretMap.Add(AppId, Secret);
             secretMap.Add(ChildAppId, ChildSecret);
@@ -101,7 +101,12 @@ namespace Tests.PlayMode
         /// </summary>
         private void LoadIds()
         {
-            pathToIds = Application.dataPath.Substring(0, Application.dataPath.LastIndexOf('/')) + "\\ids.txt";
+#if UNITY_WINDOWS || UNITY_EDITOR_WIN
+                pathToIds = Application.dataPath.Substring(0, Application.dataPath.LastIndexOf('/')) + "\\ids.txt";
+#elif UNITY_MACOS || UNITY_EDITOR_OSX
+                pathToIds = Application.dataPath.Substring(0, Application.dataPath.LastIndexOf('/')) + "/ids.txt";
+#endif
+
             using (var reader = new StreamReader(pathToIds))
             {
                 string line;
@@ -170,7 +175,7 @@ namespace Tests.PlayMode
                 }
             }
         }
-    
+
         /// <summary>
         /// Pretty prints outgoing and incoming log messages
         /// </summary>
@@ -213,7 +218,7 @@ namespace Tests.PlayMode
             Debug.Log(message);
         }
 
-        protected void LogResults(string errorMessage,bool testPassed)
+        protected void LogResults(string errorMessage, bool testPassed)
         {
             if (testPassed)
             {
@@ -225,9 +230,9 @@ namespace Tests.PlayMode
                 Debug.Log($"ERROR: {errorMessage}");
                 if (_tc.m_statusMessage != null && _tc.m_statusMessage.Contains("{"))
                 {
-                    Debug.Log($"Json Error: {_tc.m_statusMessage}");    
+                    Debug.Log($"Json Error: {_tc.m_statusMessage}");
                 }
-                
+
                 Assert.True(false);
             }
         }
