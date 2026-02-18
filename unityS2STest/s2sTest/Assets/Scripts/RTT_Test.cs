@@ -80,7 +80,9 @@ public class RTT_Test : MonoBehaviour
 
     private void JoinLobbyChannel(string lobbyId)
     {
-        string channelId = AppId + ":sy:_lobbystatus_" + lobbyId;
+        //remove first <appId> from lobbyId
+        string newLobbyId = lobbyId.Split(':')[1] + ":" + lobbyId.Split(':')[2];
+        string channelId = AppId + ":sy:_lobbystatus_" + newLobbyId;
         _s2s.ConnectToChannel(channelId, OnChannelJoined);
     }
 
