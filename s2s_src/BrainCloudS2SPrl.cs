@@ -56,28 +56,35 @@ public class BrainCloudS2SPrl
     /// </summary>
     public static int GetTimeoutSecs()
     {
-        string val = Environment.GetEnvironmentVariable("PRE_READY_LAUNCH_TIMEOUT_SECS");
+        string val = Environment.GetEnvironmentVariable("PRL_TIMEOUT_SECS");
         if (int.TryParse(val, out int secs))
             return secs;
-        return 0;
+
+        val = Environment.GetEnvironmentVariable("PRE_READY_LAUNCH_TIMEOUT_SECS");
+        if (int.TryParse(val, out int secs2))
+            return secs2;
+
+        return 60;
     }
 
     /// <summary>
     /// Begins the PRL flow. Assumes the S2S session is already authenticated.
     /// The callback receives true to proceed with launch, false to exit the server.
     /// </summary>
-    public void Start(BrainCloudS2S s2s, string lobbyId, int timeoutSecs, PRLCompleteCallback callback)
+    public void Start(BrainCloudS2S s2s, string lobbyId, PRLCompleteCallback callback)
     {
         _s2s = s2s;
         _lobbyId = lobbyId;
-        _timeoutSecs = timeoutSecs;
+
+        _timeoutSecs = GetTimeoutSecs();
         _callback = callback;
         _state = PrlState.ConnectingRTT;
         _startTime = DateTime.UtcNow;
         _complete = false;
 
-        _s2s.RegisterRTTRawCallback(OnRTTMessage);
+        _s2s.LogString("[s2s prl] Starting PRL flow with lobbyId=" + lobbyId + ", timeoutSecs=" + _timeoutSecs);
         _s2s.EnableRTT(OnRTTConnected);
+        _s2s.RegisterRTTRawCallback(OnRTTMessage);
     }
 
     /// <summary>
@@ -105,44 +112,35 @@ public class BrainCloudS2SPrl
     private string BuildChannelId()
     {
         // Lobby ID format: <appId>:<instanceId>
-        // Channel format:  <appId>:sy:_lobbystatus_<instanceId>
+        // Channel format:  <appId>:sy:_lobby_<instanceId>
         string instanceId = _lobbyId;
         int colonPos = _lobbyId.IndexOf(':');
         if (colonPos >= 0)
             instanceId = _lobbyId.Substring(colonPos + 1);
-        return _s2s.AppId + ":sy:_lobbystatus_" + instanceId;
+        return _s2s.AppId + ":sy:_lobby_" + instanceId;
     }
 
-    // Step 1: RTT connected — subscribe to the lobby status channel via HTTP S2S
+    // Step 1: RTT connected — subscribe to the lobby status channel
     private void OnRTTConnected(string responseString)
     {
-        _s2s.LogString("[PRL] RTT connected. Subscribing to channel: " + BuildChannelId());
+        _s2s.LogString("[PRL] RTT connected. " + responseString + " Subscribing to channel: " + BuildChannelId());
         _state = PrlState.SubscribingChannel;
-        _s2s.Request(new Dictionary<string, object>
-        {
-            { "service", "chat" },
-            { "operation", "SYS_CHANNEL_CONNECT" },
-            { "data", new Dictionary<string, object>
-                {
-                    { "channelId", BuildChannelId() },
-                    { "maxReturn", 0 }
-                }
-            }
-        }, OnChannelSubscribed);
+        _s2s.ConnectToChannel(BuildChannelId(), OnChannelSubscribed);
     }
 
     // Step 2: Channel subscribed — notify brainCloud the room session has started
     private void OnChannelSubscribed(string responseString)
     {
-        _s2s.LogString("[PRL] Channel subscribed. Notifying session started.");
+        _s2s.LogString("[PRL] Channel subscribed. Notifying session started." + responseString);
         _state = PrlState.NotifyingSessionStarted;
         _s2s.Request(new Dictionary<string, object>
         {
-            { "service", "lobby" },
+            { "service", "roomServer" },
             { "operation", "SYS_ROOM_SESSION_STARTED" },
             { "data", new Dictionary<string, object>
                 {
-                    { "lobbyId", _lobbyId }
+                    { "serverId", Environment.GetEnvironmentVariable("SERVER_ID") },
+                    { "serverContext", ParseServerContext() }
                 }
             }
         }, OnSessionStartedNotified);
@@ -176,6 +174,7 @@ public class BrainCloudS2SPrl
     // RTT push — only evaluated when waiting for lobby to transition to "starting"
     private void OnRTTMessage(string responseString)
     {
+        _s2s.LogString("[PRL] RTT responseString " + responseString);
         if (_complete || _state != PrlState.WaitingForLobbyReady) return;
         string lobbyState = ParseLobbyStateFromRTT(responseString);
         if (lobbyState != null)
@@ -209,7 +208,7 @@ public class BrainCloudS2SPrl
         }
     }
 
-    // Parses GET_LOBBY_DATA response: { "status": 200, "data": { "lobby": { "state": "..." } } }
+    // Parses GET_LOBBY_DATA response: { "status": 200, "data": { "state": "..." } }
     private string ParseLobbyState(string responseString)
     {
         try
@@ -217,22 +216,36 @@ public class BrainCloudS2SPrl
             var response = (Dictionary<string, object>)JsonReader.Deserialize(responseString);
             if ((int)response["status"] != 200) return null;
             var data = (Dictionary<string, object>)response["data"];
-            var lobby = (Dictionary<string, object>)data["lobby"];
-            return lobby["state"] as string;
+            return data["state"] as string;
         }
         catch { return null; }
     }
 
-    // Parses RTT push: { "service": "lobby", "operation": "LOBBY_STATUS", "data": { "state": "...", ... } }
+    // Parses RTT push: { "service": "chat", "operation": "INCOMING", "data": { "content": { "data": { "lobby": { "state": "..." } } } } }
     private string ParseLobbyStateFromRTT(string responseString)
     {
         try
         {
             var msg = (Dictionary<string, object>)JsonReader.Deserialize(responseString);
-            if (!(msg["service"] as string).Equals("lobby")) return null;
+            if (!(msg["service"] as string).Equals("chat")) return null;
+            if (!(msg["operation"] as string).Equals("INCOMING")) return null;
             var data = (Dictionary<string, object>)msg["data"];
-            return data["state"] as string;
+            var content = (Dictionary<string, object>)data["content"];
+            var contentData = (Dictionary<string, object>)content["data"];
+            var lobby = (Dictionary<string, object>)contentData["lobby"];
+            return lobby["state"] as string;
         }
         catch { return null; }
+    }
+
+    public static Dictionary<string, object> ParseServerContext()
+    {
+        try
+        {
+            string val = Environment.GetEnvironmentVariable("SERVER_CONTEXT") ?? "{}";
+            val = val.Trim().Trim('\'').Replace("\\\"", "\"");
+            return JsonReader.Deserialize(val) as Dictionary<string, object> ?? new Dictionary<string, object>();
+        }
+        catch { return new Dictionary<string, object>(); }
     }
 }

@@ -28,7 +28,8 @@ using BrainCloud.JsonFx.Json;
 
 public class BrainCloudS2S
 {
-    public const string VERSION = "5.9.0";
+
+    private static string VERSION = "5.9.0";
     private static int NO_PACKET_EXPECTED = -1;
     private static int SERVER_SESSION_EXPIRED = 40365;
     private static string DEFAULT_S2S_URL = "https://api.braincloudservers.com/s2sdispatcher";
@@ -131,6 +132,8 @@ public class BrainCloudS2S
         {
             _rttComms = new Brainclouds2sRttComms();
         }
+
+        LogString($"Initialized S2S AppId:{appId} ServerName:{serverName} ServerSecret:{serverSecret} ServerUrl:{serverUrl} ");
     }
 
     /**
@@ -138,7 +141,7 @@ public class BrainCloudS2S
     */
     public void Authenticate()
     {
-        Authenticate(OnAuthenticationCallback);
+        Authenticate(null);
     }
 
     /**
@@ -153,7 +156,7 @@ public class BrainCloudS2S
         {
             if (!(_state == State.Authenticated) && _packetId == 0) //this is an authentication request no matter what
             {
-                Authenticate(OnAuthenticationCallback);
+                Authenticate();
             }
         }
         if (!(_state == State.Authenticated)) // these are the requests that have been made that are awaiting authentication. We NEED to store the request so we can properly call this function back for additional requests that are made after authenitcation.
@@ -183,7 +186,7 @@ public class BrainCloudS2S
         {
             if (!(_state == State.Authenticated) && _packetId == 0) //this is an authentication request no matter what
             {
-                Authenticate(OnAuthenticationCallback);
+                Authenticate();
             }
         }
         if (!(_state == State.Authenticated)) // these are the requests that have been made that are awaiting authentication. We NEED to store the request so we can properly call this function back for additional requests that are made after authenitcation.
@@ -202,6 +205,7 @@ public class BrainCloudS2S
 
     public void QueueRequest(string jsonRequestData, S2SCallback callback)
     {
+        Debug.Log("[S2S] Queuing request: " + jsonRequestData);
 #if DOT_NET
         //create new request
         HttpWebRequest httpRequest = (HttpWebRequest)WebRequest.Create(ServerURL);
@@ -257,9 +261,10 @@ public class BrainCloudS2S
         string packet = CreatePacket(dataPacket);                   //create data packet of the data with packetId info
 
         byte[] byteArray = Encoding.UTF8.GetBytes(packet);          //convert data packet to byte[]
-        request.ContentLength = byteArray.Length;
+
         Stream requestStream = request.GetRequestStream();          //gets a stream to send dataPacket for request
         requestStream.Write(byteArray, 0, byteArray.Length);        //writes dataPacket to stream and sends data with request. 
+        request.ContentLength = byteArray.Length;
     }
 #endif
 
@@ -268,7 +273,7 @@ public class BrainCloudS2S
     {
         string packet = CreatePacket(dataPacket);                   //create data packet of the data with packetId info
 
-        //LogString("Sending Request: " + packet);
+        LogString("Sending Request: " + packet + " to url " + request.url);
 
         byte[] byteArray = Encoding.UTF8.GetBytes(packet);          //convert data packet to byte[]
         request.uploadHandler = new UploadHandlerRaw(byteArray);    //prepare data
@@ -285,10 +290,11 @@ public class BrainCloudS2S
 
     public void Authenticate(S2SCallback callback)
     {
+        Debug.Log("[S2S] Authenticating");
         _state = State.Authenticating;
         string jsonAuthString = "{\"service\":\"authenticationV2\",\"operation\":\"AUTHENTICATE\",\"data\":{\"appId\":\"" + AppId + "\",\"serverName\":\"" + ServerName + "\",\"serverSecret\":\"" + ServerSecret + "\"}}";
         _packetId = 0;
-        QueueRequest(jsonAuthString, callback + OnAuthenticationCallback); //We need to call OnAuthenticate callback to refill the queue with requests waiting on an auth request, and handle heartbeat and sessionId data. 
+        QueueRequest(jsonAuthString, OnAuthenticationCallback + callback); //OnAuthenticationCallback runs first to set SessionId, then the user callback fires with a valid session.
     }
 
     public void SendHeartbeat(S2SCallback callback)
@@ -355,7 +361,6 @@ public class BrainCloudS2S
             string unityResponse = null;
             if(activeRequest.request.downloadHandler.isDone)
             {
-                LogString("Sending Request: " + activeRequest.request);
                 unityResponse = activeRequest.request.downloadHandler.text;
             }
             if(!string.IsNullOrEmpty(activeRequest.request.error))
@@ -545,10 +550,8 @@ public class BrainCloudS2S
         }
         else
         {
-            if (LoggingEnabled)
-            {
-                LogString("You need to initialize first before checking if RTT is enabled.");
-            }
+
+            LogString("You need to initialize first before checking if RTT is enabled.");
         }
     }
 
@@ -563,10 +566,8 @@ public class BrainCloudS2S
         }
         else
         {
-            if (LoggingEnabled)
-            {
-                LogString("You need to initialize and EnableRTT first before disabling RTT.");
-            }
+
+            LogString("You need to initialize and EnableRTT first before disabling RTT.");
         }
     }
 
@@ -594,10 +595,8 @@ public class BrainCloudS2S
         }
         else
         {
-            if (LoggingEnabled)
-            {
-                LogString("You need to initialize and EnableRTT first before registering the callback");
-            }
+
+            LogString("You need to initialize and EnableRTT first before registering the callback");
         }
     }
 
