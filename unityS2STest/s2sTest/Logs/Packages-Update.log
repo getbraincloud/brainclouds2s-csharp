@@ -68,18 +68,15 @@ The following packages were updated:
   com.unity.textmeshpro from version 2.0.1 to 3.0.6
   com.unity.timeline from version 1.2.10 to 1.4.8
 
-=== Tue Feb 17 14:04:59 2026
+=== Wed Feb 25 12:22:00 2026
 
 Packages were changed.
 Update Mode: updateDependencies
 
-The following packages were added:
-  com.unity.modules.adaptiveperformance@1.0.0
-  com.unity.modules.vectorgraphics@1.0.0
 The following packages were updated:
+  com.unity.ai.navigation from version 2.0.9 to 2.0.10
   com.unity.collab-proxy from version 2.9.3 to 2.11.3
   com.unity.ide.rider from version 3.0.38 to 3.0.39
-  com.unity.ide.visualstudio from version 2.0.23 to 2.0.26
-  com.unity.multiplayer.center from version 1.0.0 to 1.0.1
+  com.unity.ide.visualstudio from version 2.0.23 to 2.0.27
   com.unity.test-framework from version 1.5.1 to 1.6.0
   com.unity.timeline from version 1.8.9 to 1.8.10
