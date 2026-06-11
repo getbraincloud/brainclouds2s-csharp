@@ -27,7 +27,7 @@ using BrainCloud.JsonFx.Json;
 public class BrainCloudS2S
 {
 
-    private static string VERSION = "5.9.0";
+    private static string VERSION = "6.0.0";
     private static int NO_PACKET_EXPECTED = -1;
     private static int SERVER_SESSION_EXPIRED = 40365;
     private static string DEFAULT_S2S_URL = "https://api.braincloudservers.com/s2sdispatcher";
