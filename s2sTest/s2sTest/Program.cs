@@ -536,10 +536,13 @@ namespace s2sTest
             {
                 checkIfFail(response);
                 Console.WriteLine("\n----- PASS -----");
-                //context.Disconnect();
 
-                Console.WriteLine("\nALL TESTS PASS!");
-                Environment.Exit(0);
+                // Test 22+ - RTT tests
+                startTest("TestRTT");
+                RTT_Test.RunTests(context,
+                    () => { Console.WriteLine("\nALL TESTS PASS!"); Environment.Exit(0); },
+                    testFail
+                );
             }
         }
     }
