@@ -2,7 +2,14 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>netcoreapp3.1</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
+    <DefineConstants>DOT_NET</DefineConstants>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Reference canonical s2s_src directly — no copy or symlink needed -->
+    <Compile Include="../../s2s_src/**/*.cs" />
+    <Compile Remove="../../s2s_src/UnityWebSocketsForWebGL/**/*.cs" />
+  </ItemGroup>
 
 </Project>

@@ -71,3 +71,6 @@ crashlytics-build.properties
 /[Aa]ssets/[Ss]treamingAssets/aa/*
 
 */.idea/*
+unityS2STest/s2sTest/ids.txt
+s2sTest/s2sTest/ids.txt
+
