@@ -71,6 +71,9 @@ public class BrainCloudS2S
         Disconnected
     }
 
+    private static readonly string[] _sensitiveKeys = { "secretKey", "serverSecret", "ApiKey", "secret", "token", "X-RTT-SECRET" };
+    private bool _showSecretLogs = false;
+
     private long _packetId = 0;
     private long _heartbeatSeconds = 1800; //Default to 30 mins
     private State _state = State.Disconnected;
@@ -320,10 +323,38 @@ public class BrainCloudS2S
     }
 #endif
 
+    /**
+     * Control whether sensitive fields (serverSecret, token, etc.) are shown in logs.
+     * When false (default), those values are replaced with [REDACTED].
+     */
+    public void ShowSecretLogs(bool enabled)
+    {
+        _showSecretLogs = enabled;
+    }
+
+    private string RedactSecretKeys(string s)
+    {
+        foreach (var key in _sensitiveKeys)
+        {
+            string search = "\"" + key + "\":\"";
+            int keyStart = s.IndexOf(search, StringComparison.Ordinal);
+            while (keyStart >= 0)
+            {
+                int valueStart = keyStart + search.Length;
+                int valueEnd = s.IndexOf('"', valueStart);
+                if (valueEnd < 0) break;
+                s = s.Substring(0, valueStart) + "[REDACTED]" + s.Substring(valueEnd);
+                keyStart = s.IndexOf(search, valueStart + 10, StringComparison.Ordinal);
+            }
+        }
+        return s;
+    }
+
     public void LogString(string s)
     {
         if (LoggingEnabled)
         {
+            if (!_showSecretLogs) s = RedactSecretKeys(s);
 #if DOT_NET
             Console.WriteLine("\n#S2S " + s);
 #endif
