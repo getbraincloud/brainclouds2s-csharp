@@ -315,9 +315,24 @@ namespace s2sTest
                 Console.WriteLine("\n----- PASS -----");
                 //context.Disconnect();
 
+                // The tests below work inside s2s_test_folder; create it if this app doesn't have it yet.
+                context.GlobalFileV3.SysLookupFolder("s2s_test_folder", lookup =>
+                {
+                    if (statusOf(lookup) == 200) startGFV3LookupFolder();
+                    else context.GlobalFileV3.SysCreateFolder("", -1, "s2s_test_folder", "S2S integration test root", false, created => startGFV3LookupFolder());
+                });
+            }
+
+            int statusOf(string response)
+            {
+                try { return (int)JsonReader.Deserialize<Dictionary<string, object>>(response)["status"]; }
+                catch (Exception) { return 0; }
+            }
+
+            void startGFV3LookupFolder()
+            {
                 // Test 9 - SysLookupFolder
                 startTest("TestGFV3LookupFolder");
-                //context.Authenticate();
                 context.GlobalFileV3.SysLookupFolder("s2s_test_folder", onTestGFV3LookupFolderCallback);
             }
 
